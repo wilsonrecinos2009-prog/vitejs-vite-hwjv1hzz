@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { initializeApp } from "firebase/app";
 import { getFirestore, collection, onSnapshot, doc, setDoc, updateDoc, arrayUnion } from "firebase/firestore";
 
-// Firebase config
 const firebaseConfig = {
   apiKey: "AIzaSyBeLWj_MVt_R0ddreAtJ3QlQ7WMCP8BSj4",
   authDomain: "demeritosescolar-579bb.firebaseapp.com",
@@ -15,13 +14,46 @@ const firebaseConfig = {
 const firebaseApp = initializeApp(firebaseConfig);
 const db = getFirestore(firebaseApp);
 
+interface HistoryEntry {
+  date: string;
+  reason: string;
+  points: number;
+  type: "add" | "remove";
+}
+
+interface Student {
+  id: string;
+  name: string;
+  grade: string;
+  avatar: string;
+  demerits: number;
+  history: HistoryEntry[];
+}
+
+interface Notification {
+  id: string;
+  message: string;
+  level: RiskLevel;
+}
+
+interface Toast {
+  msg: string;
+  type: "success" | "warning" | "error";
+}
+
+interface RiskLevel {
+  label: string;
+  color: string;
+  bg: string;
+}
+
 const REASONS = [
   "Llegada tarde", "Tarea incompleta", "Comportamiento en clase",
   "Falta injustificada", "Uniforme incompleto", "Uso de celular",
   "Falta de respeto", "Deshonestidad académica", "Otro",
 ];
 
-function getRiskLevel(demerits) {
+function getRiskLevel(demerits: number): RiskLevel {
   if (demerits === 0) return { label: "Excelente", color: "#22c55e", bg: "rgba(34,197,94,0.12)" };
   if (demerits <= 5) return { label: "Bajo riesgo", color: "#84cc16", bg: "rgba(132,204,22,0.12)" };
   if (demerits <= 10) return { label: "Atención", color: "#f59e0b", bg: "rgba(245,158,11,0.12)" };
@@ -29,7 +61,7 @@ function getRiskLevel(demerits) {
   return { label: "Crítico", color: "#ef4444", bg: "rgba(239,68,68,0.12)" };
 }
 
-function getAvatarColor(name) {
+function getAvatarColor(name: string): string {
   const colors = ["#6366f1","#8b5cf6","#ec4899","#f43f5e","#f59e0b","#10b981"];
   let hash = 0;
   for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
@@ -37,40 +69,40 @@ function getAvatarColor(name) {
 }
 
 export default function DemeritosApp() {
-  const [students, setStudents] = useState([]);
+  const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState("dashboard");
-  const [selectedStudent, setSelectedStudent] = useState(null);
+  const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [showModal, setShowModal] = useState(false);
-  const [modalType, setModalType] = useState("add");
+  const [modalType, setModalType] = useState<"add" | "remove">("add");
   const [form, setForm] = useState({ reason: REASONS[0], points: 1, customReason: "" });
-  const [notifications, setNotifications] = useState([]);
-  const [toast, setToast] = useState(null);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [toast, setToast] = useState<Toast | null>(null);
   const [search, setSearch] = useState("");
   const [addStudentModal, setAddStudentModal] = useState(false);
   const [newStudent, setNewStudent] = useState({ name: "", grade: "" });
 
-  // Escuchar cambios en Firestore en tiempo real
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "students"), (snapshot) => {
-      const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() })) as Student[];
       setStudents(data);
       setLoading(false);
-      const high = data.filter(s => s.demerits > 10);
-      setNotifications(high.map(s => ({
-        id: s.id, message: `${s.name} tiene ${s.demerits} deméritos (${getRiskLevel(s.demerits).label})`,
+      const high = data.filter((s: Student) => s.demerits > 10);
+      setNotifications(high.map((s: Student) => ({
+        id: s.id,
+        message: `${s.name} tiene ${s.demerits} deméritos (${getRiskLevel(s.demerits).label})`,
         level: getRiskLevel(s.demerits),
       })));
     });
     return () => unsub();
   }, []);
 
-  const showToast = (msg, type = "success") => {
+  const showToast = (msg: string, type: "success" | "warning" | "error" = "success") => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 3000);
   };
 
-  const openModal = (student, type) => {
+  const openModal = (student: Student, type: "add" | "remove") => {
     setSelectedStudent(student);
     setModalType(type);
     setForm({ reason: REASONS[0], points: 1, customReason: "" });
@@ -78,8 +110,9 @@ export default function DemeritosApp() {
   };
 
   const handleSubmit = async () => {
+    if (!selectedStudent) return;
     const reason = form.reason === "Otro" ? form.customReason : form.reason;
-    const pts = parseInt(form.points);
+    const pts = parseInt(String(form.points));
     if (!reason || pts < 1) return;
     const today = new Date().toISOString().split("T")[0];
     const ref = doc(db, "students", selectedStudent.id);
@@ -101,7 +134,7 @@ export default function DemeritosApp() {
 
   const handleAddStudent = async () => {
     if (!newStudent.name || !newStudent.grade) return;
-    const initials = newStudent.name.split(" ").map(w => w[0]).join("").substring(0, 2).toUpperCase();
+    const initials = newStudent.name.split(" ").map((w: string) => w[0]).join("").substring(0, 2).toUpperCase();
     const id = Date.now().toString();
     await setDoc(doc(db, "students", id), {
       name: newStudent.name, grade: newStudent.grade,
@@ -113,12 +146,12 @@ export default function DemeritosApp() {
   };
 
   const sorted = [...students]
-    .filter(s => s.name.toLowerCase().includes(search.toLowerCase()) || s.grade.toLowerCase().includes(search.toLowerCase()))
-    .sort((a, b) => b.demerits - a.demerits);
+    .filter((s: Student) => s.name.toLowerCase().includes(search.toLowerCase()) || s.grade.toLowerCase().includes(search.toLowerCase()))
+    .sort((a: Student, b: Student) => b.demerits - a.demerits);
 
-  const totalDemerits = students.reduce((sum, s) => sum + s.demerits, 0);
-  const criticalCount = students.filter(s => s.demerits > 10).length;
-  const topStudents = [...students].sort((a, b) => b.demerits - a.demerits).slice(0, 3);
+  const totalDemerits = students.reduce((sum: number, s: Student) => sum + s.demerits, 0);
+  const criticalCount = students.filter((s: Student) => s.demerits > 10).length;
+  const topStudents = [...students].sort((a: Student, b: Student) => b.demerits - a.demerits).slice(0, 3);
 
   return (
     <div style={{
@@ -189,7 +222,6 @@ export default function DemeritosApp() {
         </div>
       )}
 
-      {/* Loading */}
       {loading ? (
         <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:16 }}>
           <div style={{ width:40, height:40, border:"3px solid #1f2937", borderTop:"3px solid #6366f1", borderRadius:"50%", animation:"spin 1s linear infinite" }} />
@@ -198,18 +230,16 @@ export default function DemeritosApp() {
       ) : (
       <main style={{ flex:1, padding:24, maxWidth:1200, margin:"0 auto", width:"100%" }}>
 
-        {/* DASHBOARD */}
         {view === "dashboard" && (
           <div style={{ animation:"slideIn .3s" }}>
             <h1 style={{ fontFamily:"'Syne',sans-serif", fontSize:28, fontWeight:800, marginBottom:4 }}>Panel General</h1>
             <p style={{ color:"#6b7280", fontSize:14, marginBottom:24 }}>Datos sincronizados en tiempo real con Firebase ☁️</p>
-
             <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))", gap:16, marginBottom:28 }}>
               {[
                 { label:"Total Estudiantes", value:students.length, icon:"👥", color:"#6366f1" },
                 { label:"Deméritos Totales", value:totalDemerits, icon:"⚡", color:"#f59e0b" },
                 { label:"En Zona Crítica", value:criticalCount, icon:"🚨", color:"#ef4444" },
-                { label:"Sin Deméritos", value:students.filter(s=>s.demerits===0).length, icon:"✅", color:"#22c55e" },
+                { label:"Sin Deméritos", value:students.filter((s:Student)=>s.demerits===0).length, icon:"✅", color:"#22c55e" },
               ].map(({ label, value, icon, color }) => (
                 <div key={label} className="card" style={{ padding:20 }}>
                   <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
@@ -222,11 +252,10 @@ export default function DemeritosApp() {
                 </div>
               ))}
             </div>
-
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
               <div className="card" style={{ padding:20 }}>
                 <h3 style={{ fontWeight:700, marginBottom:16, fontSize:15 }}>🔥 Top Deméritos</h3>
-                {topStudents.length === 0 ? <p style={{ color:"#6b7280", fontSize:13 }}>Aún no hay estudiantes.</p> : topStudents.map((s, i) => {
+                {topStudents.length === 0 ? <p style={{ color:"#6b7280", fontSize:13 }}>Aún no hay estudiantes.</p> : topStudents.map((s: Student, i: number) => {
                   const risk = getRiskLevel(s.demerits);
                   return (
                     <div key={s.id} style={{ display:"flex", alignItems:"center", gap:12, marginBottom:14 }}>
@@ -243,10 +272,9 @@ export default function DemeritosApp() {
                   );
                 })}
               </div>
-
               <div className="card" style={{ padding:20 }}>
                 <h3 style={{ fontWeight:700, marginBottom:16, fontSize:15 }}>📋 Actividad Reciente</h3>
-                {students.flatMap(s => (s.history||[]).map(h => ({ ...h, studentName: s.name }))).sort((a,b) => b.date.localeCompare(a.date)).slice(0,6).map((h, i) => (
+                {students.flatMap((s: Student) => (s.history||[]).map((h: HistoryEntry) => ({ ...h, studentName: s.name }))).sort((a,b) => b.date.localeCompare(a.date)).slice(0,6).map((h, i: number) => (
                   <div key={i} style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10, padding:"8px 12px", background:"#0d1117", borderRadius:10 }}>
                     <span style={{ fontSize:14 }}>{h.type==="add"?"🔴":"🟢"}</span>
                     <div style={{ flex:1 }}>
@@ -263,7 +291,6 @@ export default function DemeritosApp() {
           </div>
         )}
 
-        {/* STUDENTS */}
         {view === "students" && (
           <div style={{ animation:"slideIn .3s" }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
@@ -274,7 +301,7 @@ export default function DemeritosApp() {
               <input className="input" placeholder="🔍 Buscar por nombre o grupo..." value={search} onChange={e => setSearch(e.target.value)} style={{ width:280 }} />
             </div>
             {sorted.length === 0 && <div className="card" style={{ padding:40, textAlign:"center", color:"#6b7280" }}>No hay estudiantes aún. ¡Agrega el primero!</div>}
-            {sorted.map(s => {
+            {sorted.map((s: Student) => {
               const risk = getRiskLevel(s.demerits);
               return (
                 <div key={s.id} className="student-row">
@@ -300,14 +327,13 @@ export default function DemeritosApp() {
           </div>
         )}
 
-        {/* RANKING */}
         {view === "ranking" && (
           <div style={{ animation:"slideIn .3s" }}>
             <h1 style={{ fontFamily:"'Syne',sans-serif", fontSize:28, fontWeight:800, marginBottom:4 }}>🏆 Ranking</h1>
             <p style={{ color:"#6b7280", fontSize:14, marginBottom:24 }}>Ordenado por cantidad de deméritos</p>
-            {[...students].sort((a,b) => b.demerits - a.demerits).map((s, i) => {
+            {[...students].sort((a: Student, b: Student) => b.demerits - a.demerits).map((s: Student, i: number) => {
               const risk = getRiskLevel(s.demerits);
-              const max = students.reduce((m, x) => Math.max(m, x.demerits), 1);
+              const max = students.reduce((m: number, x: Student) => Math.max(m, x.demerits), 1);
               return (
                 <div key={s.id} className="card" style={{ padding:"16px 20px", marginBottom:10, display:"flex", alignItems:"center", gap:16 }}>
                   <div style={{ width:36, textAlign:"center", fontFamily:"'Syne',sans-serif", fontWeight:800, fontSize:18, color: i===0?"#fbbf24":i===1?"#9ca3af":i===2?"#cd7c2f":"#4b5563" }}>
@@ -330,7 +356,6 @@ export default function DemeritosApp() {
           </div>
         )}
 
-        {/* ALERTS */}
         {view === "alerts" && (
           <div style={{ animation:"slideIn .3s" }}>
             <h1 style={{ fontFamily:"'Syne',sans-serif", fontSize:28, fontWeight:800, marginBottom:4 }}>🔔 Alertas</h1>
@@ -341,7 +366,7 @@ export default function DemeritosApp() {
                 <p style={{ fontWeight:600, fontSize:18 }}>¡Todo en orden!</p>
                 <p style={{ color:"#6b7280", marginTop:4 }}>Ningún estudiante tiene más de 10 deméritos.</p>
               </div>
-            ) : notifications.map(n => (
+            ) : notifications.map((n: Notification) => (
               <div key={n.id} className="card" style={{ padding:"16px 20px", marginBottom:10, borderColor:n.level.color, borderLeftWidth:4, display:"flex", alignItems:"center", gap:14 }}>
                 <span style={{ fontSize:28, animation:"pulse 2s infinite" }}>⚠️</span>
                 <div style={{ flex:1 }}>
@@ -351,9 +376,8 @@ export default function DemeritosApp() {
                 <button className="btn" onClick={() => setView("students")} style={{ background:n.level.bg, color:n.level.color, padding:"8px 14px", fontSize:13 }}>Ver lista</button>
               </div>
             ))}
-
             <h2 style={{ fontFamily:"'Syne',sans-serif", fontSize:20, fontWeight:700, marginTop:28, marginBottom:14 }}>📋 Historial Completo</h2>
-            {students.flatMap(s => (s.history||[]).map(h => ({ ...h, studentName: s.name, grade: s.grade }))).sort((a,b) => b.date.localeCompare(a.date)).map((h, i) => (
+            {students.flatMap((s: Student) => (s.history||[]).map((h: HistoryEntry) => ({ ...h, studentName: s.name, grade: s.grade }))).sort((a,b) => b.date.localeCompare(a.date)).map((h, i: number) => (
               <div key={i} className="card" style={{ padding:"12px 18px", marginBottom:8, display:"flex", alignItems:"center", gap:12 }}>
                 <span style={{ fontSize:20 }}>{h.type==="add"?"🔴":"🟢"}</span>
                 <div style={{ flex:1 }}>
@@ -371,10 +395,9 @@ export default function DemeritosApp() {
       </main>
       )}
 
-      {/* MODAL DEMERITS */}
       {showModal && selectedStudent && (
         <div className="overlay" onClick={() => setShowModal(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:20 }}>
               <div style={{ width:44, height:44, borderRadius:"50%", background:getAvatarColor(selectedStudent.name), display:"flex", alignItems:"center", justifyContent:"center", fontWeight:700, color:"#fff" }}>{selectedStudent.avatar}</div>
               <div>
@@ -397,7 +420,7 @@ export default function DemeritosApp() {
             )}
             <div style={{ marginBottom:22 }}>
               <label style={{ fontSize:12, color:"#9ca3af", fontWeight:600, textTransform:"uppercase", letterSpacing:".5px", display:"block", marginBottom:6 }}>Puntos</label>
-              <input type="number" className="input" min={1} max={20} value={form.points} onChange={e => setForm({...form, points: e.target.value})} />
+              <input type="number" className="input" min={1} max={20} value={form.points} onChange={e => setForm({...form, points: parseInt(e.target.value)})} />
             </div>
             <div style={{ display:"flex", gap:10 }}>
               <button className="btn" onClick={() => setShowModal(false)} style={{ flex:1, background:"#1f2937", color:"#9ca3af", padding:12 }}>Cancelar</button>
@@ -409,10 +432,9 @@ export default function DemeritosApp() {
         </div>
       )}
 
-      {/* MODAL ADD STUDENT */}
       {addStudentModal && (
         <div className="overlay" onClick={() => setAddStudentModal(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h2 style={{ fontFamily:"'Syne',sans-serif", fontWeight:800, fontSize:20, marginBottom:20 }}>👤 Nuevo Estudiante</h2>
             <div style={{ marginBottom:14 }}>
               <label style={{ fontSize:12, color:"#9ca3af", fontWeight:600, textTransform:"uppercase", letterSpacing:".5px", display:"block", marginBottom:6 }}>Nombre completo</label>
