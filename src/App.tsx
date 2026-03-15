@@ -5,8 +5,9 @@ import {
 } from "firebase/firestore";
 import {
   getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
-  signOut, onAuthStateChanged, User
+  signOut, onAuthStateChanged
 } from "firebase/auth";
+import type { User } from "firebase/auth";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBeLWj_MVt_R0ddreAtJ3QlQ7WMCP8BSj4",
