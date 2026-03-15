@@ -23,7 +23,7 @@ const db = getFirestore(firebaseApp);
 const auth = getAuth(firebaseApp);
 
 const INVITE_CODE = "CEAH1769";
-const LOGO_URL = "https://raw.githubusercontent.com/wilsonrecinos2009-prog/vitejs-vite-hwjv1hzz/main/public/logo.png";
+const LOGO_URL = "https://raw.githubusercontent.com/wilsonrecinos2009-prog/vitejs-vite-hwjv1hzz/refs/heads/nuevo/public/logo.png";
 
 // Colores institucionales - Bandera Alemania
 const C = {
