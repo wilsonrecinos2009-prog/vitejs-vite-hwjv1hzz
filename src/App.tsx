@@ -222,7 +222,6 @@ export default function DemeritosApp() {
   const [search, setSearch] = useState("");
   const [addStudentModal, setAddStudentModal] = useState(false);
   const [newStudent, setNewStudent] = useState({ name: "", grade: "" });
-  const [deleteConfirmStudent, setDeleteConfirmStudent] = useState<Student | null>(null);
   const [periodModal, setPeriodModal] = useState(false);
   const [periodName, setPeriodName] = useState("");
   const [archivedPeriods, setArchivedPeriods] = useState<ArchivedPeriod[]>([]);
@@ -256,10 +255,6 @@ export default function DemeritosApp() {
 
   const showToast = (msg: string, type: "success"|"warning"|"error" = "success") => {
     setToast({ msg, type }); setTimeout(() => setToast(null), 3500);
-  };
-
-  const openModal = (s: Student, t: "add"|"remove") => {
-    setSelectedStudent(s); setModalType(t); setForm({ reason: REASONS[0], points: 1, customReason: "" }); setShowModal(true);
   };
 
   const handleSubmit = async () => {
@@ -309,7 +304,6 @@ export default function DemeritosApp() {
     if (action === "delete-student") {
       const s = payload as Student;
       await deleteDoc(doc(db, "students", s.id));
-      setDeleteConfirmStudent(null);
       showToast(`${s.name} eliminado del registro.`, "error");
     } else if (action === "remove-demerit") {
       setShowModal(true);
@@ -326,7 +320,6 @@ export default function DemeritosApp() {
   };
 
   const handleDeleteStudent = (student: Student) => {
-    setDeleteConfirmStudent(student);
     requirePassword("delete-student", student);
   };
 
