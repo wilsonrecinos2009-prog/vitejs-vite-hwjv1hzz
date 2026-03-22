@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { initializeApp } from "firebase/app";
 import {
-  getFirestore, collection, onSnapshot, doc, setDoc, updateDoc, arrayUnion
+  getFirestore, collection, onSnapshot, doc, setDoc, updateDoc, arrayUnion, deleteDoc, addDoc
 } from "firebase/firestore";
 import {
   getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
@@ -46,6 +46,12 @@ interface HistoryEntry {
   reason: string;
   points: number;
   type: "add" | "remove";
+}
+interface ArchivedPeriod {
+  id: string;
+  name: string;
+  archivedAt: string;
+  students: Student[];
 }
 interface Student {
   id: string;
@@ -215,6 +221,11 @@ export default function DemeritosApp() {
   const [search, setSearch] = useState("");
   const [addStudentModal, setAddStudentModal] = useState(false);
   const [newStudent, setNewStudent] = useState({ name: "", grade: "" });
+  const [deleteConfirmStudent, setDeleteConfirmStudent] = useState<Student | null>(null);
+  const [periodModal, setPeriodModal] = useState(false);
+  const [periodName, setPeriodName] = useState("");
+  const [archivedPeriods, setArchivedPeriods] = useState<ArchivedPeriod[]>([]);
+  const [demeritAlert, setDemeritAlert] = useState<{ student: Student; milestone: number } | null>(null);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => { setUser(u); setAuthChecked(true); });
@@ -227,11 +238,15 @@ export default function DemeritosApp() {
       const data = snap.docs.map(d => ({ id: d.id, ...d.data() })) as Student[];
       setStudents(data);
       setLoadingData(false);
-      setNotifications(data.filter(s => s.demerits > 10).map(s => ({
+      setNotifications(data.filter(s => s.demerits >= 5).map(s => ({
         id: s.id, message: `${s.name} — ${s.demerits} deméritos acumulados`, level: getRiskLevel(s.demerits),
       })));
     });
-    return () => unsub();
+    const unsubArchive = onSnapshot(collection(db, "archivedPeriods"), (snap) => {
+      const data = snap.docs.map(d => ({ id: d.id, ...d.data() })) as ArchivedPeriod[];
+      setArchivedPeriods(data.sort((a, b) => b.archivedAt.localeCompare(a.archivedAt)));
+    });
+    return () => { unsub(); unsubArchive(); };
   }, [user]);
 
   const showToast = (msg: string, type: "success"|"warning"|"error" = "success") => {
@@ -253,7 +268,17 @@ export default function DemeritosApp() {
       demerits: newDem, history: arrayUnion({ date: today, reason, points: pts, type: modalType }),
     });
     setShowModal(false);
-    showToast(modalType === "add" ? `${pts} deméritos registrados — ${selectedStudent.name}` : `${pts} deméritos removidos — ${selectedStudent.name}`, modalType === "add" ? "warning" : "success");
+    if (modalType === "add") {
+      for (const milestone of [5, 10, 15]) {
+        if (selectedStudent.demerits < milestone && newDem >= milestone) {
+          setDemeritAlert({ student: { ...selectedStudent, demerits: newDem }, milestone });
+          break;
+        }
+      }
+      showToast(`${pts} deméritos registrados — ${selectedStudent.name}`, "warning");
+    } else {
+      showToast(`${pts} deméritos removidos — ${selectedStudent.name}`, "success");
+    }
   };
 
   const handleAddStudent = async () => {
@@ -262,6 +287,23 @@ export default function DemeritosApp() {
     await setDoc(doc(db, "students", Date.now().toString()), { name: newStudent.name, grade: newStudent.grade, avatar: initials, demerits: 0, history: [] });
     setAddStudentModal(false); setNewStudent({ name:"", grade:"" });
     showToast(`Estudiante ${newStudent.name} registrado correctamente.`);
+  };
+
+  const handleDeleteStudent = async (student: Student) => {
+    await deleteDoc(doc(db, "students", student.id));
+    setDeleteConfirmStudent(null);
+    showToast(`${student.name} eliminado del registro.`, "error");
+  };
+
+  const handleArchivePeriod = async () => {
+    if (!periodName.trim()) return;
+    const today = new Date().toISOString().split("T")[0];
+    await addDoc(collection(db, "archivedPeriods"), { name: periodName.trim(), archivedAt: today, students });
+    for (const s of students) {
+      await updateDoc(doc(db, "students", s.id), { demerits: 0, history: [] });
+    }
+    setPeriodModal(false); setPeriodName("");
+    showToast(`Periodo "${periodName}" archivado. Nuevo periodo iniciado.`);
   };
 
   const sorted = [...students].filter(s => s.name.toLowerCase().includes(search.toLowerCase()) || s.grade.toLowerCase().includes(search.toLowerCase())).sort((a,b) => b.demerits - a.demerits);
@@ -333,6 +375,7 @@ export default function DemeritosApp() {
             <span style={{ fontSize:12, color:"#aaa", maxWidth:160, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{user.email}</span>
           </div>
           <button className="btn" onClick={() => signOut(auth)} style={{ background:"transparent", border:`1px solid #444`, color:"#888", padding:"6px 14px", fontSize:12 }}>Cerrar Sesión</button>
+          <button className="btn" onClick={() => setPeriodModal(true)} style={{ background:"transparent", border:`1px solid ${C.gold}`, color:C.gold, padding:"6px 14px", fontSize:12 }}>📦 Archivar Periodo</button>
           <button className="btn" onClick={() => setAddStudentModal(true)} style={{ background:C.red, border:`1px solid ${C.redDark}`, color:"#fff", padding:"7px 16px", fontSize:12 }}>+ Registrar Alumno</button>
         </div>
       </header>
@@ -428,7 +471,18 @@ export default function DemeritosApp() {
                 <input className="input" placeholder="Buscar por nombre o sección..." value={search} onChange={e => setSearch(e.target.value)} style={{ width:280 }} />
               </div>
               <div className="divider" />
-              {sorted.length === 0 && <div className="card" style={{ padding:40, textAlign:"center", color:"#555" }}>No se encontraron registros.</div>}
+              {sorted.length === 0 && search.trim() === "" && <div className="card" style={{ padding:40, textAlign:"center", color:"#555" }}>No se encontraron registros.</div>}
+              {sorted.length === 0 && search.trim() !== "" && (
+                <div className="card" style={{ padding:32, textAlign:"center" }}>
+                  <div style={{ fontSize:36, marginBottom:12, color:"#555" }}>⊘</div>
+                  <p style={{ fontFamily:"'Playfair Display',serif", fontWeight:700, fontSize:16, marginBottom:6 }}>No se encontró "{search}"</p>
+                  <p style={{ color:"#555", fontSize:13, marginBottom:20 }}>¿Desea registrar este alumno?</p>
+                  <button className="btn" onClick={() => { setNewStudent({ name: search, grade: "" }); setAddStudentModal(true); }}
+                    style={{ background:C.red, color:"#fff", padding:"9px 22px", fontSize:13, border:`1px solid ${C.redDark}` }}>
+                    + Registrar "{search}"
+                  </button>
+                </div>
+              )}
               {sorted.map(s => {
                 const risk = getRiskLevel(s.demerits);
                 return (
@@ -448,6 +502,7 @@ export default function DemeritosApp() {
                     <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
                       <button className="btn" onClick={() => openModal(s,"add")} style={{ background:C.red, color:"#fff", padding:"7px 14px", fontSize:12 }}>+ Demérito</button>
                       <button className="btn" onClick={() => openModal(s,"remove")} style={{ background:"#1e1e1e", border:"1px solid #444", color:"#aaa", padding:"7px 14px", fontSize:12 }}>− Remover</button>
+                      <button className="btn" onClick={() => setDeleteConfirmStudent(s)} style={{ background:"#1e1e1e", border:"1px solid #3a3a3a", color:"#666", padding:"7px 14px", fontSize:12 }}>🗑 Eliminar</button>
                     </div>
                   </div>
                 );
@@ -488,13 +543,13 @@ export default function DemeritosApp() {
           {view === "alerts" && (
             <div style={{ animation:"slideIn .3s" }}>
               <h1 style={{ fontFamily:"'Playfair Display',serif", fontSize:24, fontWeight:700, marginBottom:4 }}>Alertas Disciplinarias</h1>
-              <p style={{ color:"#666", fontSize:13, marginBottom:16 }}>Alumnos que superan el umbral de 10 deméritos</p>
+              <p style={{ color:"#666", fontSize:13, marginBottom:16 }}>Alumnos que han alcanzado 5, 10 o 15 deméritos</p>
               <div className="divider" />
               {notifications.length === 0 ? (
                 <div className="card" style={{ padding:48, textAlign:"center" }}>
                   <div style={{ fontSize:40, marginBottom:12, color:"#22c55e" }}>✓</div>
                   <p style={{ fontFamily:"'Playfair Display',serif", fontWeight:700, fontSize:18, marginBottom:6 }}>Sin alertas activas</p>
-                  <p style={{ color:"#555", fontSize:13 }}>Todos los alumnos están dentro del rango aceptable.</p>
+                  <p style={{ color:"#555", fontSize:13 }}>Ningún alumno ha alcanzado 5 o más deméritos.</p>
                 </div>
               ) : notifications.map(n => (
                 <div key={n.id} className="card" style={{ padding:"14px 20px", marginBottom:8, borderLeft:`4px solid ${n.level.color}`, display:"flex", alignItems:"center", gap:14 }}>
@@ -582,6 +637,91 @@ export default function DemeritosApp() {
               <button className="btn" onClick={() => setAddStudentModal(false)} style={{ flex:1, background:"#1e1e1e", border:"1px solid #444", color:"#888", padding:12 }}>Cancelar</button>
               <button className="btn" onClick={handleAddStudent} style={{ flex:2, background:C.red, color:"#fff", padding:12, fontSize:14 }}>Registrar Alumno</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal eliminar alumno */}
+      {deleteConfirmStudent && (
+        <div className="overlay" onClick={() => setDeleteConfirmStudent(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div style={{ borderBottom:`1px solid ${C.border}`, paddingBottom:16, marginBottom:20 }}>
+              <h2 style={{ fontFamily:"'Playfair Display',serif", fontWeight:700, fontSize:18, color:C.red }}>Eliminar Registro</h2>
+            </div>
+            <p style={{ color:"#aaa", fontSize:14, marginBottom:8 }}>
+              ¿Está seguro que desea eliminar permanentemente a <strong style={{ color:C.white }}>{deleteConfirmStudent.name}</strong>?
+            </p>
+            <p style={{ color:"#666", fontSize:12, marginBottom:24 }}>Esta acción eliminará al alumno y todo su historial de deméritos. No se puede deshacer.</p>
+            <div style={{ display:"flex", gap:10 }}>
+              <button className="btn" onClick={() => setDeleteConfirmStudent(null)} style={{ flex:1, background:"#1e1e1e", border:"1px solid #444", color:"#888", padding:12 }}>Cancelar</button>
+              <button className="btn" onClick={() => handleDeleteStudent(deleteConfirmStudent)} style={{ flex:2, background:C.red, color:"#fff", padding:12, fontSize:14 }}>Sí, eliminar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal archivar periodo */}
+      {periodModal && (
+        <div className="overlay" onClick={() => setPeriodModal(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div style={{ borderBottom:`1px solid ${C.border}`, paddingBottom:16, marginBottom:20 }}>
+              <h2 style={{ fontFamily:"'Playfair Display',serif", fontWeight:700, fontSize:18, color:C.gold }}>Archivar Periodo Escolar</h2>
+            </div>
+            <p style={{ color:"#aaa", fontSize:13, marginBottom:20 }}>
+              Se guardarán todos los registros actuales y se reiniciarán los deméritos de todos los alumnos para comenzar un nuevo periodo.
+            </p>
+            <div style={{ marginBottom:14 }}>
+              <label style={{ fontSize:11, color:"#666", fontWeight:600, textTransform:"uppercase", letterSpacing:"1px", display:"block", marginBottom:6 }}>Nombre del Periodo</label>
+              <input className="input" placeholder="Ej: 1er Trimestre 2026" value={periodName} onChange={e => setPeriodName(e.target.value)} />
+            </div>
+            {archivedPeriods.length > 0 && (
+              <div style={{ marginBottom:18 }}>
+                <p style={{ fontSize:11, color:"#555", fontWeight:600, letterSpacing:"1px", textTransform:"uppercase", marginBottom:8 }}>Periodos archivados</p>
+                {archivedPeriods.slice(0,3).map(p => (
+                  <div key={p.id} style={{ background:"#1a1a1a", borderRadius:3, padding:"7px 12px", marginBottom:5, fontSize:13, color:"#777", display:"flex", justifyContent:"space-between", borderLeft:`3px solid ${C.gold}` }}>
+                    <span>{p.name}</span><span style={{ color:"#444", fontSize:11 }}>{p.archivedAt}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{ display:"flex", gap:10 }}>
+              <button className="btn" onClick={() => setPeriodModal(false)} style={{ flex:1, background:"#1e1e1e", border:"1px solid #444", color:"#888", padding:12 }}>Cancelar</button>
+              <button className="btn" onClick={handleArchivePeriod} disabled={!periodName.trim()}
+                style={{ flex:2, background:periodName.trim()?`linear-gradient(135deg,${C.gold},${C.goldDark})`:"#333", color:periodName.trim()?C.black:"#666", padding:12, fontSize:14 }}>
+                Archivar y Reiniciar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal alerta de deméritos 5/10/15 */}
+      {demeritAlert && (
+        <div className="overlay" onClick={() => setDemeritAlert(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ textAlign:"center" }}>
+            <div style={{ fontSize:56, marginBottom:8 }}>{demeritAlert.milestone === 15 ? "🚨" : demeritAlert.milestone === 10 ? "⚠️" : "🔔"}</div>
+            <h2 style={{ fontFamily:"'Playfair Display',serif", fontWeight:700, fontSize:20, marginBottom:6,
+              color: demeritAlert.milestone === 15 ? C.red : demeritAlert.milestone === 10 ? "#f97316" : C.gold }}>
+              {demeritAlert.milestone === 15 ? "Límite Máximo Alcanzado" : `Alerta: ${demeritAlert.milestone} Deméritos`}
+            </h2>
+            <p style={{ fontSize:15, fontWeight:600, color:C.white, marginBottom:6 }}>{demeritAlert.student.name}</p>
+            <p style={{ color:"#888", fontSize:13, marginBottom:20 }}>
+              {demeritAlert.milestone === 15
+                ? "Ha alcanzado el límite de 15 deméritos. Se recomienda acción disciplinaria inmediata y notificación urgente a los padres de familia."
+                : demeritAlert.milestone === 10
+                ? "Ha llegado a 10 deméritos. Se recomienda citar a padres de familia y registrar en expediente disciplinario."
+                : "Ha llegado a 5 deméritos. Se recomienda emitir advertencia formal al alumno."}
+            </p>
+            <div style={{ background: demeritAlert.milestone===15?"rgba(204,0,0,0.1)":demeritAlert.milestone===10?"rgba(249,115,22,0.1)":"rgba(255,204,0,0.1)",
+              border:`1px solid ${demeritAlert.milestone===15?C.red:demeritAlert.milestone===10?"#f97316":C.gold}`,
+              borderRadius:3, padding:"10px 16px", marginBottom:20, fontSize:13,
+              color:demeritAlert.milestone===15?C.red:demeritAlert.milestone===10?"#f97316":C.gold }}>
+              Total acumulado: <strong>{demeritAlert.student.demerits} deméritos</strong>
+            </div>
+            <button className="btn" onClick={() => setDemeritAlert(null)}
+              style={{ width:"100%", background:C.red, color:"#fff", padding:12, fontSize:14 }}>
+              Entendido
+            </button>
           </div>
         </div>
       )}
