@@ -23,6 +23,7 @@ const db = getFirestore(firebaseApp);
 const auth = getAuth(firebaseApp);
 
 const INVITE_CODE = "CEAH1769";
+const ADMIN_PASSWORD = "2q1vKK3cP6s9ch1I";
 const LOGO_URL = "https://raw.githubusercontent.com/wilsonrecinos2009-prog/vitejs-vite-hwjv1hzz/refs/heads/nuevo/public/logo.png";
 
 // Colores institucionales - Bandera Alemania
@@ -226,6 +227,10 @@ export default function DemeritosApp() {
   const [periodName, setPeriodName] = useState("");
   const [archivedPeriods, setArchivedPeriods] = useState<ArchivedPeriod[]>([]);
   const [demeritAlert, setDemeritAlert] = useState<{ student: Student; milestone: number } | null>(null);
+  // Password protection
+  const [pwModal, setPwModal] = useState<{ action: "delete-student" | "remove-demerit" | "archive-period"; payload?: unknown } | null>(null);
+  const [pwInput, setPwInput] = useState("");
+  const [pwError, setPwError] = useState("");
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => { setUser(u); setAuthChecked(true); });
@@ -289,21 +294,51 @@ export default function DemeritosApp() {
     showToast(`Estudiante ${newStudent.name} registrado correctamente.`);
   };
 
-  const handleDeleteStudent = async (student: Student) => {
-    await deleteDoc(doc(db, "students", student.id));
-    setDeleteConfirmStudent(null);
-    showToast(`${student.name} eliminado del registro.`, "error");
+  // Password-protected actions
+  const requirePassword = (action: "delete-student" | "remove-demerit" | "archive-period", payload?: unknown) => {
+    setPwInput(""); setPwError(""); setPwModal({ action, payload });
   };
 
-  const handleArchivePeriod = async () => {
-    if (!periodName.trim()) return;
-    const today = new Date().toISOString().split("T")[0];
-    await addDoc(collection(db, "archivedPeriods"), { name: periodName.trim(), archivedAt: today, students });
-    for (const s of students) {
-      await updateDoc(doc(db, "students", s.id), { demerits: 0, history: [] });
+  const handlePasswordConfirm = async () => {
+    if (pwInput !== ADMIN_PASSWORD) {
+      setPwError("Contraseña incorrecta. Intente nuevamente."); setPwInput(""); return;
     }
-    setPeriodModal(false); setPeriodName("");
-    showToast(`Periodo "${periodName}" archivado. Nuevo periodo iniciado.`);
+    if (!pwModal) return;
+    const { action, payload } = pwModal;
+    setPwModal(null); setPwInput(""); setPwError("");
+    if (action === "delete-student") {
+      const s = payload as Student;
+      await deleteDoc(doc(db, "students", s.id));
+      setDeleteConfirmStudent(null);
+      showToast(`${s.name} eliminado del registro.`, "error");
+    } else if (action === "remove-demerit") {
+      setShowModal(true);
+    } else if (action === "archive-period") {
+      const name = payload as string;
+      const today = new Date().toISOString().split("T")[0];
+      await addDoc(collection(db, "archivedPeriods"), { name, archivedAt: today, students });
+      for (const s of students) {
+        await updateDoc(doc(db, "students", s.id), { demerits: 0, history: [] });
+      }
+      setPeriodModal(false); setPeriodName("");
+      showToast(`Periodo "${name}" archivado. Nuevo periodo iniciado.`);
+    }
+  };
+
+  const handleDeleteStudent = (student: Student) => {
+    setDeleteConfirmStudent(student);
+    requirePassword("delete-student", student);
+  };
+
+  const openModalProtected = (s: Student, t: "add" | "remove") => {
+    setSelectedStudent(s); setModalType(t); setForm({ reason: REASONS[0], points: 1, customReason: "" });
+    if (t === "remove") { requirePassword("remove-demerit"); }
+    else { setShowModal(true); }
+  };
+
+  const handleArchivePeriod = () => {
+    if (!periodName.trim()) return;
+    requirePassword("archive-period", periodName.trim());
   };
 
   const sorted = [...students].filter(s => s.name.toLowerCase().includes(search.toLowerCase()) || s.grade.toLowerCase().includes(search.toLowerCase())).sort((a,b) => b.demerits - a.demerits);
@@ -500,9 +535,9 @@ export default function DemeritosApp() {
                       <span className="badge" style={{ background:risk.bg, color:risk.color }}>{risk.label}</span>
                     </div>
                     <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-                      <button className="btn" onClick={() => openModal(s,"add")} style={{ background:C.red, color:"#fff", padding:"7px 14px", fontSize:12 }}>+ Demérito</button>
-                      <button className="btn" onClick={() => openModal(s,"remove")} style={{ background:"#1e1e1e", border:"1px solid #444", color:"#aaa", padding:"7px 14px", fontSize:12 }}>− Remover</button>
-                      <button className="btn" onClick={() => setDeleteConfirmStudent(s)} style={{ background:"#1e1e1e", border:"1px solid #3a3a3a", color:"#666", padding:"7px 14px", fontSize:12 }}>🗑 Eliminar</button>
+                      <button className="btn" onClick={() => openModalProtected(s,"add")} style={{ background:C.red, color:"#fff", padding:"7px 14px", fontSize:12 }}>+ Demérito</button>
+                      <button className="btn" onClick={() => openModalProtected(s,"remove")} style={{ background:"#1e1e1e", border:"1px solid #444", color:"#aaa", padding:"7px 14px", fontSize:12 }}>🔒 Remover</button>
+                      <button className="btn" onClick={() => handleDeleteStudent(s)} style={{ background:"#1e1e1e", border:"1px solid #3a3a3a", color:"#666", padding:"7px 14px", fontSize:12 }}>🔒 Eliminar</button>
                     </div>
                   </div>
                 );
@@ -641,20 +676,40 @@ export default function DemeritosApp() {
         </div>
       )}
 
-      {/* Modal eliminar alumno */}
-      {deleteConfirmStudent && (
-        <div className="overlay" onClick={() => setDeleteConfirmStudent(null)}>
+      {/* Modal contraseña administrativa */}
+      {pwModal && (
+        <div className="overlay" onClick={() => { setPwModal(null); setPwInput(""); setPwError(""); }}>
           <div className="modal" onClick={e => e.stopPropagation()}>
-            <div style={{ borderBottom:`1px solid ${C.border}`, paddingBottom:16, marginBottom:20 }}>
-              <h2 style={{ fontFamily:"'Playfair Display',serif", fontWeight:700, fontSize:18, color:C.red }}>Eliminar Registro</h2>
+            <div style={{ borderBottom:`1px solid ${C.border}`, paddingBottom:16, marginBottom:20, display:"flex", alignItems:"center", gap:12 }}>
+              <span style={{ fontSize:26, color:C.gold }}>🔒</span>
+              <div>
+                <h2 style={{ fontFamily:"'Playfair Display',serif", fontWeight:700, fontSize:18 }}>Acción Protegida</h2>
+                <p style={{ color:"#666", fontSize:12, marginTop:2 }}>
+                  {pwModal.action === "delete-student" && "Eliminar alumno del registro"}
+                  {pwModal.action === "remove-demerit" && "Remover deméritos de alumno"}
+                  {pwModal.action === "archive-period" && "Archivar periodo e iniciar nuevo"}
+                </p>
+              </div>
             </div>
-            <p style={{ color:"#aaa", fontSize:14, marginBottom:8 }}>
-              ¿Está seguro que desea eliminar permanentemente a <strong style={{ color:C.white }}>{deleteConfirmStudent.name}</strong>?
-            </p>
-            <p style={{ color:"#666", fontSize:12, marginBottom:24 }}>Esta acción eliminará al alumno y todo su historial de deméritos. No se puede deshacer.</p>
+            <p style={{ color:"#888", fontSize:13, marginBottom:16 }}>Esta acción requiere autorización. Ingrese la contraseña administrativa para continuar.</p>
+            <div style={{ marginBottom:pwError ? 10 : 22 }}>
+              <label style={{ fontSize:11, color:"#666", fontWeight:600, textTransform:"uppercase", letterSpacing:"1px", display:"block", marginBottom:6 }}>Contraseña Administrativa</label>
+              <input className="input" type="password" placeholder="••••••••••••••••" value={pwInput}
+                onChange={e => { setPwInput(e.target.value); setPwError(""); }}
+                onKeyDown={e => e.key === "Enter" && handlePasswordConfirm()}
+                autoFocus />
+            </div>
+            {pwError && (
+              <div style={{ background:"rgba(204,0,0,0.1)", border:`1px solid rgba(204,0,0,0.4)`, borderRadius:3, padding:"9px 13px", fontSize:13, color:"#ff6666", marginBottom:16 }}>
+                ⚠ {pwError}
+              </div>
+            )}
             <div style={{ display:"flex", gap:10 }}>
-              <button className="btn" onClick={() => setDeleteConfirmStudent(null)} style={{ flex:1, background:"#1e1e1e", border:"1px solid #444", color:"#888", padding:12 }}>Cancelar</button>
-              <button className="btn" onClick={() => handleDeleteStudent(deleteConfirmStudent)} style={{ flex:2, background:C.red, color:"#fff", padding:12, fontSize:14 }}>Sí, eliminar</button>
+              <button className="btn" onClick={() => { setPwModal(null); setPwInput(""); setPwError(""); }} style={{ flex:1, background:"#1e1e1e", border:"1px solid #444", color:"#888", padding:12 }}>Cancelar</button>
+              <button className="btn" onClick={handlePasswordConfirm}
+                style={{ flex:2, background:`linear-gradient(135deg,${C.gold},${C.goldDark})`, color:C.black, padding:12, fontSize:14, fontWeight:700 }}>
+                Confirmar
+              </button>
             </div>
           </div>
         </div>
@@ -667,9 +722,7 @@ export default function DemeritosApp() {
             <div style={{ borderBottom:`1px solid ${C.border}`, paddingBottom:16, marginBottom:20 }}>
               <h2 style={{ fontFamily:"'Playfair Display',serif", fontWeight:700, fontSize:18, color:C.gold }}>Archivar Periodo Escolar</h2>
             </div>
-            <p style={{ color:"#aaa", fontSize:13, marginBottom:20 }}>
-              Se guardarán todos los registros actuales y se reiniciarán los deméritos de todos los alumnos para comenzar un nuevo periodo.
-            </p>
+            <p style={{ color:"#888", fontSize:13, marginBottom:20 }}>Se guardarán todos los registros actuales y se reiniciarán los deméritos de todos los alumnos. Se solicitará la contraseña administrativa para confirmar.</p>
             <div style={{ marginBottom:14 }}>
               <label style={{ fontSize:11, color:"#666", fontWeight:600, textTransform:"uppercase", letterSpacing:"1px", display:"block", marginBottom:6 }}>Nombre del Periodo</label>
               <input className="input" placeholder="Ej: 1er Trimestre 2026" value={periodName} onChange={e => setPeriodName(e.target.value)} />
@@ -688,7 +741,7 @@ export default function DemeritosApp() {
               <button className="btn" onClick={() => setPeriodModal(false)} style={{ flex:1, background:"#1e1e1e", border:"1px solid #444", color:"#888", padding:12 }}>Cancelar</button>
               <button className="btn" onClick={handleArchivePeriod} disabled={!periodName.trim()}
                 style={{ flex:2, background:periodName.trim()?`linear-gradient(135deg,${C.gold},${C.goldDark})`:"#333", color:periodName.trim()?C.black:"#666", padding:12, fontSize:14 }}>
-                Archivar y Reiniciar
+                🔒 Archivar y Reiniciar
               </button>
             </div>
           </div>
