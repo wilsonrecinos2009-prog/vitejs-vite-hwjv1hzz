@@ -73,11 +73,12 @@ const REASONS = [
 ];
 
 function getRiskLevel(d: number): RiskLevel {
-  if (d === 0) return { label: "Sin deméritos", color: "#22c55e", bg: "rgba(34,197,94,0.12)" };
-  if (d <= 5)  return { label: "Bajo",          color: "#84cc16", bg: "rgba(132,204,22,0.12)" };
-  if (d <= 10) return { label: "Moderado",       color: C.gold,    bg: "rgba(255,204,0,0.15)" };
-  if (d <= 15) return { label: "Alto",           color: "#f97316", bg: "rgba(249,115,22,0.12)" };
-  return               { label: "Crítico",        color: C.red,     bg: "rgba(204,0,0,0.15)" };
+  if (d === 0)  return { label: "Sin deméritos",  color: "#22c55e", bg: "rgba(34,197,94,0.12)" };
+  if (d <= 2)   return { label: "Sin sanción",    color: "#84cc16", bg: "rgba(132,204,22,0.12)" };
+  if (d <= 5)   return { label: "Advertencia",    color: C.gold,    bg: "rgba(255,204,0,0.15)" };
+  if (d <= 9)   return { label: "Aviso a familia",color: "#f97316", bg: "rgba(249,115,22,0.12)" };
+  if (d <= 14)  return { label: "Suspensión",     color: "#ef4444", bg: "rgba(239,68,68,0.12)" };
+  return                { label: "Reprobación",   color: C.red,     bg: "rgba(204,0,0,0.2)" };
 }
 
 function getAvatarColor(name: string): string {
@@ -242,7 +243,7 @@ export default function DemeritosApp() {
       const data = snap.docs.map(d => ({ id: d.id, ...d.data() })) as Student[];
       setStudents(data);
       setLoadingData(false);
-      setNotifications(data.filter(s => s.demerits >= 5).map(s => ({
+      setNotifications(data.filter(s => s.demerits >= 3).map(s => ({
         id: s.id, message: `${s.name} — ${s.demerits} deméritos acumulados`, level: getRiskLevel(s.demerits),
       })));
     });
@@ -263,13 +264,15 @@ export default function DemeritosApp() {
     const pts = parseInt(String(form.points));
     if (!reason || pts < 1) return;
     const today = new Date().toISOString().split("T")[0];
-    const newDem = modalType === "add" ? selectedStudent.demerits + pts : Math.max(0, selectedStudent.demerits - pts);
+    const newDem = modalType === "add"
+      ? Math.min(15, selectedStudent.demerits + pts)
+      : Math.max(0, selectedStudent.demerits - pts);
     await updateDoc(doc(db, "students", selectedStudent.id), {
       demerits: newDem, history: arrayUnion({ date: today, reason, points: pts, type: modalType }),
     });
     setShowModal(false);
     if (modalType === "add") {
-      for (const milestone of [5, 10, 15]) {
+      for (const milestone of [3, 6, 10, 15]) {
         if (selectedStudent.demerits < milestone && newDem >= milestone) {
           setDemeritAlert({ student: { ...selectedStudent, demerits: newDem }, milestone });
           break;
@@ -331,7 +334,8 @@ export default function DemeritosApp() {
 
   const handleArchivePeriod = () => {
     if (!periodName.trim()) return;
-    requirePassword("archive-period", periodName.trim());
+    setPeriodModal(false);
+    setTimeout(() => requirePassword("archive-period", periodName.trim()), 50);
   };
 
   const sorted = [...students].filter(s => s.name.toLowerCase().includes(search.toLowerCase()) || s.grade.toLowerCase().includes(search.toLowerCase())).sort((a,b) => b.demerits - a.demerits);
@@ -571,13 +575,13 @@ export default function DemeritosApp() {
           {view === "alerts" && (
             <div style={{ animation:"slideIn .3s" }}>
               <h1 style={{ fontFamily:"'Playfair Display',serif", fontSize:24, fontWeight:700, marginBottom:4 }}>Alertas Disciplinarias</h1>
-              <p style={{ color:"#666", fontSize:13, marginBottom:16 }}>Alumnos que han alcanzado 5, 10 o 15 deméritos</p>
+              <p style={{ color:"#666", fontSize:13, marginBottom:16 }}>Alumnos que han alcanzado 3, 6, 10 o 15 deméritos</p>
               <div className="divider" />
               {notifications.length === 0 ? (
                 <div className="card" style={{ padding:48, textAlign:"center" }}>
                   <div style={{ fontSize:40, marginBottom:12, color:"#22c55e" }}>✓</div>
                   <p style={{ fontFamily:"'Playfair Display',serif", fontWeight:700, fontSize:18, marginBottom:6 }}>Sin alertas activas</p>
-                  <p style={{ color:"#555", fontSize:13 }}>Ningún alumno ha alcanzado 5 o más deméritos.</p>
+                  <p style={{ color:"#555", fontSize:13 }}>Ningún alumno ha alcanzado 3 o más deméritos.</p>
                 </div>
               ) : notifications.map(n => (
                 <div key={n.id} className="card" style={{ padding:"14px 20px", marginBottom:8, borderLeft:`4px solid ${n.level.color}`, display:"flex", alignItems:"center", gap:14 }}>
@@ -634,7 +638,7 @@ export default function DemeritosApp() {
             )}
             <div style={{ marginBottom:22 }}>
               <label style={{ fontSize:11, color:"#666", fontWeight:600, textTransform:"uppercase", letterSpacing:"1px", display:"block", marginBottom:6 }}>Puntos a {modalType==="add"?"asignar":"remover"}</label>
-              <input type="number" className="input" min={1} max={20} value={form.points} onChange={e => setForm({...form, points:parseInt(e.target.value)})} />
+              <input type="number" className="input" min={1} max={15} value={form.points} onChange={e => setForm({...form, points:parseInt(e.target.value)})} />
             </div>
             <div style={{ display:"flex", gap:10 }}>
               <button className="btn" onClick={() => setShowModal(false)} style={{ flex:1, background:"#1e1e1e", border:"1px solid #444", color:"#888", padding:12 }}>Cancelar</button>
@@ -710,7 +714,7 @@ export default function DemeritosApp() {
 
       {/* Modal archivar periodo */}
       {periodModal && (
-        <div className="overlay" onClick={() => setPeriodModal(false)}>
+        <div className="overlay">
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div style={{ borderBottom:`1px solid ${C.border}`, paddingBottom:16, marginBottom:20 }}>
               <h2 style={{ fontFamily:"'Playfair Display',serif", fontWeight:700, fontSize:18, color:C.gold }}>Archivar Periodo Escolar</h2>
@@ -745,24 +749,32 @@ export default function DemeritosApp() {
       {demeritAlert && (
         <div className="overlay" onClick={() => setDemeritAlert(null)}>
           <div className="modal" onClick={e => e.stopPropagation()} style={{ textAlign:"center" }}>
-            <div style={{ fontSize:56, marginBottom:8 }}>{demeritAlert.milestone === 15 ? "🚨" : demeritAlert.milestone === 10 ? "⚠️" : "🔔"}</div>
+            <div style={{ fontSize:56, marginBottom:8 }}>
+              {demeritAlert.milestone === 15 ? "🚨" : demeritAlert.milestone === 10 ? "⛔" : demeritAlert.milestone === 6 ? "⚠️" : "🔔"}
+            </div>
             <h2 style={{ fontFamily:"'Playfair Display',serif", fontWeight:700, fontSize:20, marginBottom:6,
-              color: demeritAlert.milestone === 15 ? C.red : demeritAlert.milestone === 10 ? "#f97316" : C.gold }}>
-              {demeritAlert.milestone === 15 ? "Límite Máximo Alcanzado" : `Alerta: ${demeritAlert.milestone} Deméritos`}
+              color: demeritAlert.milestone === 15 ? C.red : demeritAlert.milestone === 10 ? "#ef4444" : demeritAlert.milestone === 6 ? "#f97316" : C.gold }}>
+              {demeritAlert.milestone === 15 ? "Reprobación del Grado"
+                : demeritAlert.milestone === 10 ? "Reunión con Dirección y Familia"
+                : demeritAlert.milestone === 6 ? "Comunicación a la Familia"
+                : "Advertencia Verbal y Reflexión Escrita"}
             </h2>
             <p style={{ fontSize:15, fontWeight:600, color:C.white, marginBottom:6 }}>{demeritAlert.student.name}</p>
             <p style={{ color:"#888", fontSize:13, marginBottom:20 }}>
               {demeritAlert.milestone === 15
-                ? "Ha alcanzado el límite de 15 deméritos. Se recomienda acción disciplinaria inmediata y notificación urgente a los padres de familia."
+                ? "El alumno ha alcanzado 15 deméritos. Según el reglamento institucional, esto conlleva la reprobación del grado escolar."
                 : demeritAlert.milestone === 10
-                ? "Ha llegado a 10 deméritos. Se recomienda citar a padres de familia y registrar en expediente disciplinario."
-                : "Ha llegado a 5 deméritos. Se recomienda emitir advertencia formal al alumno."}
+                ? "El alumno ha alcanzado 10 deméritos. Se requiere reunión inmediata con Dirección y familia. Constituye la última advertencia antes de la reprobación."
+                : demeritAlert.milestone === 6
+                ? "El alumno ha acumulado 6 deméritos. Se debe notificar formalmente a la familia y asignar tareas correctivas."
+                : "El alumno ha acumulado 3 deméritos. Se debe aplicar advertencia verbal y solicitar reflexión escrita."}
             </p>
-            <div style={{ background: demeritAlert.milestone===15?"rgba(204,0,0,0.1)":demeritAlert.milestone===10?"rgba(249,115,22,0.1)":"rgba(255,204,0,0.1)",
-              border:`1px solid ${demeritAlert.milestone===15?C.red:demeritAlert.milestone===10?"#f97316":C.gold}`,
+            <div style={{
+              background: demeritAlert.milestone===15?"rgba(204,0,0,0.12)":demeritAlert.milestone===10?"rgba(239,68,68,0.1)":demeritAlert.milestone===6?"rgba(249,115,22,0.1)":"rgba(255,204,0,0.1)",
+              border:`1px solid ${demeritAlert.milestone===15?C.red:demeritAlert.milestone===10?"#ef4444":demeritAlert.milestone===6?"#f97316":C.gold}`,
               borderRadius:3, padding:"10px 16px", marginBottom:20, fontSize:13,
-              color:demeritAlert.milestone===15?C.red:demeritAlert.milestone===10?"#f97316":C.gold }}>
-              Total acumulado: <strong>{demeritAlert.student.demerits} deméritos</strong>
+              color:demeritAlert.milestone===15?C.red:demeritAlert.milestone===10?"#ef4444":demeritAlert.milestone===6?"#f97316":C.gold }}>
+              Total acumulado: <strong>{demeritAlert.student.demerits} / 15 deméritos</strong>
             </div>
             <button className="btn" onClick={() => setDemeritAlert(null)}
               style={{ width:"100%", background:C.red, color:"#fff", padding:12, fontSize:14 }}>
