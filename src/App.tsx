@@ -395,7 +395,7 @@ export default function DemeritosApp() {
           </div>
         </div>
         <nav style={{ display:"flex", flex:1 }}>
-          {[["dashboard","Panel General"],["students","Estudiantes"],["ranking","Clasificación"],["alerts","Alertas"]].map(([v, label]) => (
+          {[["dashboard","Panel General"],["students","Estudiantes"],["ranking","Clasificación"],["alerts","Alertas"],["archive","Periodos"]].map(([v, label]) => (
             <div key={v} className={`nav-item ${view===v?"active":""}`} onClick={() => setView(v)} style={{ color: view===v ? C.gold : "#888", fontSize:12 }}>
               <span>{label}</span>
               {v==="alerts" && notifications.length > 0 && <span style={{ background:C.red, color:"#fff", borderRadius:"50%", width:17, height:17, display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, fontWeight:700 }}>{notifications.length}</span>}
@@ -608,6 +608,75 @@ export default function DemeritosApp() {
                   </div>
                   <span style={{ color:"#555", fontSize:11 }}>{h.date}</span>
                   <span style={{ fontWeight:700, color:h.type==="add"?C.red:"#22c55e", fontSize:14, minWidth:36, textAlign:"right" }}>{h.type==="add"?"+":"-"}{h.points}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {/* PERIODOS ARCHIVADOS */}
+          {view === "archive" && (
+            <div style={{ animation:"slideIn .3s" }}>
+              <h1 style={{ fontFamily:"'Playfair Display',serif", fontSize:24, fontWeight:700, marginBottom:4 }}>Periodos Archivados</h1>
+              <p style={{ color:"#666", fontSize:13, marginBottom:16 }}>Historial de periodos escolares anteriores</p>
+              <div className="divider" />
+              {archivedPeriods.length === 0 ? (
+                <div className="card" style={{ padding:48, textAlign:"center" }}>
+                  <div style={{ fontSize:40, marginBottom:12, color:"#444" }}>📦</div>
+                  <p style={{ fontFamily:"'Playfair Display',serif", fontWeight:700, fontSize:18, marginBottom:6 }}>Sin periodos archivados</p>
+                  <p style={{ color:"#555", fontSize:13 }}>Cuando archives un periodo aparecerá aquí.</p>
+                </div>
+              ) : archivedPeriods.map(p => (
+                <div key={p.id} className="card" style={{ marginBottom:16, overflow:"hidden" }}>
+                  {/* Header del periodo */}
+                  <div style={{ background:"#1a1a1a", padding:"14px 20px", borderBottom:`1px solid ${C.border}`, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+                      <span style={{ fontSize:20 }}>📦</span>
+                      <div>
+                        <p style={{ fontFamily:"'Playfair Display',serif", fontWeight:700, fontSize:16, color:C.gold }}>{p.name}</p>
+                        <p style={{ fontSize:11, color:"#555", marginTop:2 }}>Archivado el {p.archivedAt} · {p.students?.length ?? 0} alumnos</p>
+                      </div>
+                    </div>
+                    <div style={{ display:"flex", gap:16, textAlign:"center" }}>
+                      <div>
+                        <p style={{ fontSize:22, fontWeight:800, fontFamily:"'Playfair Display',serif", color:C.red }}>
+                          {p.students?.reduce((sum, s) => sum + (s.demerits ?? 0), 0) ?? 0}
+                        </p>
+                        <p style={{ fontSize:10, color:"#555", textTransform:"uppercase", letterSpacing:"1px" }}>Deméritos</p>
+                      </div>
+                      <div>
+                        <p style={{ fontSize:22, fontWeight:800, fontFamily:"'Playfair Display',serif", color:"#ef4444" }}>
+                          {p.students?.filter(s => s.demerits >= 10).length ?? 0}
+                        </p>
+                        <p style={{ fontSize:10, color:"#555", textTransform:"uppercase", letterSpacing:"1px" }}>Críticos</p>
+                      </div>
+                      <div>
+                        <p style={{ fontSize:22, fontWeight:800, fontFamily:"'Playfair Display',serif", color:"#22c55e" }}>
+                          {p.students?.filter(s => s.demerits === 0).length ?? 0}
+                        </p>
+                        <p style={{ fontSize:10, color:"#555", textTransform:"uppercase", letterSpacing:"1px" }}>Sin demer.</p>
+                      </div>
+                    </div>
+                  </div>
+                  {/* Lista de alumnos del periodo */}
+                  <div style={{ padding:"12px 20px" }}>
+                    {(p.students ?? []).sort((a, b) => b.demerits - a.demerits).map(s => {
+                      const risk = getRiskLevel(s.demerits);
+                      return (
+                        <div key={s.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"8px 0", borderBottom:`1px solid #1e1e1e` }}>
+                          <div style={{ width:34, height:34, borderRadius:"50%", background:getAvatarColor(s.name), border:`2px solid ${C.border}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:700, color:"#fff", flexShrink:0 }}>{s.avatar}</div>
+                          <div style={{ flex:1 }}>
+                            <div style={{ fontSize:13, fontWeight:600 }}>{s.name} <span style={{ color:"#555", fontWeight:400 }}>· {s.grade}</span></div>
+                            <div className="progress-bar" style={{ width:160, marginTop:4 }}>
+                              <div className="progress-fill" style={{ width:`${Math.min(100,(s.demerits/15)*100)}%`, background:risk.color }} />
+                            </div>
+                          </div>
+                          <div style={{ textAlign:"right" }}>
+                            <span style={{ fontSize:20, fontWeight:800, fontFamily:"'Playfair Display',serif", color:risk.color }}>{s.demerits}</span>
+                            <div><span className="badge" style={{ background:risk.bg, color:risk.color }}>{risk.label}</span></div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               ))}
             </div>
