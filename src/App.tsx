@@ -23,21 +23,38 @@ const db = getFirestore(firebaseApp);
 const auth = getAuth(firebaseApp);
 
 const INVITE_CODE = "CEAH1769";
+const ADMIN_PASSWORD = "2q1vKK3cP6s9ch1I";
+const LOGO_URL = "https://raw.githubusercontent.com/wilsonrecinos2009-prog/vitejs-vite-hwjv1hzz/refs/heads/nuevo/public/logo.png";
+
+// Colores institucionales - Bandera Alemania
+const C = {
+  black:   "#1a1a1a",
+  blackSoft: "#2a2a2a",
+  red:     "#CC0000",
+  redDark: "#990000",
+  gold:    "#FFCC00",
+  goldDark:"#E6B800",
+  white:   "#F5F5F0",
+  gray:    "#6b6b6b",
+  grayLight:"#e8e8e8",
+  border:  "#3a3a3a",
+  cardBg:  "#222222",
+  pageBg:  "#141414",
+};
 
 interface HistoryEntry {
   date: string;
   reason: string;
   points: number;
   type: "add" | "remove";
+  teacher?: string;
 }
-
 interface ArchivedPeriod {
   id: string;
   name: string;
   archivedAt: string;
   students: Student[];
 }
-
 interface Student {
   id: string;
   name: string;
@@ -46,47 +63,46 @@ interface Student {
   demerits: number;
   history: HistoryEntry[];
 }
-
-interface Notification {
-  id: string;
-  message: string;
-  level: RiskLevel;
-}
-
-interface Toast {
-  msg: string;
-  type: "success" | "warning" | "error";
-}
-
-interface RiskLevel {
-  label: string;
-  color: string;
-  bg: string;
-}
+interface Notification { id: string; message: string; level: RiskLevel; }
+interface Toast { msg: string; type: "success" | "warning" | "error"; }
+interface RiskLevel { label: string; color: string; bg: string; }
 
 const REASONS = [
-  "Llegada tarde", "Tarea incompleta", "Comportamiento en clase",
-  "Falta injustificada", "Uniforme incompleto", "Uso de celular",
-  "Falta de respeto", "Deshonestidad académica", "Otro",
+  "Llegada tarde","Tarea incompleta","Comportamiento en clase",
+  "Falta injustificada","Uniforme incompleto","Uso de celular",
+  "Falta de respeto","Deshonestidad académica","Otro",
 ];
 
-function getRiskLevel(demerits: number): RiskLevel {
-  if (demerits === 0) return { label: "Excelente", color: "#22c55e", bg: "rgba(34,197,94,0.12)" };
-  if (demerits <= 5) return { label: "Bajo riesgo", color: "#84cc16", bg: "rgba(132,204,22,0.12)" };
-  if (demerits <= 10) return { label: "Atención", color: "#f59e0b", bg: "rgba(245,158,11,0.12)" };
-  if (demerits <= 15) return { label: "Alto riesgo", color: "#f97316", bg: "rgba(249,115,22,0.12)" };
-  return { label: "Crítico", color: "#ef4444", bg: "rgba(239,68,68,0.12)" };
+function getRiskLevel(d: number): RiskLevel {
+  if (d === 0)  return { label: "Sin deméritos",  color: "#22c55e", bg: "rgba(34,197,94,0.12)" };
+  if (d <= 2)   return { label: "Sin sanción",    color: "#84cc16", bg: "rgba(132,204,22,0.12)" };
+  if (d <= 5)   return { label: "Advertencia",    color: C.gold,    bg: "rgba(255,204,0,0.15)" };
+  if (d <= 9)   return { label: "Aviso a familia",color: "#f97316", bg: "rgba(249,115,22,0.12)" };
+  if (d <= 14)  return { label: "Suspensión",     color: "#ef4444", bg: "rgba(239,68,68,0.12)" };
+  return                { label: "Reprobación",   color: C.red,     bg: "rgba(204,0,0,0.2)" };
 }
 
 function getAvatarColor(name: string): string {
-  const colors = ["#6366f1","#8b5cf6","#ec4899","#f43f5e","#f59e0b","#10b981"];
+  const colors = [C.red, C.redDark, "#8b0000", "#a50000", "#b30000", "#7f0000"];
   let hash = 0;
   for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
   return colors[Math.abs(hash) % colors.length];
 }
 
+// ── Franja tricolor decorativa ──────────────────────────────────────────────
+function GermanStripe() {
+  return (
+    <div style={{ display:"flex", height:5, width:"100%" }}>
+      <div style={{ flex:1, background:C.black }} />
+      <div style={{ flex:1, background:C.red }} />
+      <div style={{ flex:1, background:C.gold }} />
+    </div>
+  );
+}
+
+// ── Pantalla de autenticación ────────────────────────────────────────────────
 function AuthScreen() {
-  const [mode, setMode] = useState<"login" | "register">("login");
+  const [mode, setMode] = useState<"login"|"register">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [inviteCode, setInviteCode] = useState("");
@@ -95,92 +111,104 @@ function AuthScreen() {
 
   const handleSubmit = async () => {
     setError("");
-    if (!email || !password) { setError("Completa todos los campos."); return; }
-    if (mode === "register" && inviteCode !== INVITE_CODE) {
-      setError("Código de invitación incorrecto."); return;
-    }
+    if (!email || !password) { setError("Complete todos los campos."); return; }
+    if (mode === "register" && inviteCode !== INVITE_CODE) { setError("Código de autorización incorrecto."); return; }
     setLoading(true);
     try {
-      if (mode === "login") {
-        await signInWithEmailAndPassword(auth, email, password);
-      } else {
-        await createUserWithEmailAndPassword(auth, email, password);
-      }
+      if (mode === "login") await signInWithEmailAndPassword(auth, email, password);
+      else await createUserWithEmailAndPassword(auth, email, password);
     } catch (e: unknown) {
       const msg = (e as { code?: string })?.code || "";
       if (msg.includes("user-not-found") || msg.includes("wrong-password") || msg.includes("invalid-credential"))
-        setError("Correo o contraseña incorrectos.");
-      else if (msg.includes("email-already-in-use"))
-        setError("Este correo ya está registrado.");
-      else if (msg.includes("weak-password"))
-        setError("La contraseña debe tener al menos 6 caracteres.");
-      else setError("Ocurrió un error. Intenta de nuevo.");
+        setError("Correo electrónico o contraseña incorrectos.");
+      else if (msg.includes("email-already-in-use")) setError("Este correo ya se encuentra registrado.");
+      else if (msg.includes("weak-password")) setError("La contraseña debe tener mínimo 6 caracteres.");
+      else setError("Error al procesar la solicitud. Intente nuevamente.");
     }
     setLoading(false);
   };
 
   return (
-    <div style={{ minHeight:"100vh", background:"#0a0a0f", display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"'DM Sans','Segoe UI',sans-serif" }}>
+    <div style={{ minHeight:"100vh", background:C.pageBg, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", fontFamily:"'Georgia', 'Times New Roman', serif" }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Syne:wght@700;800&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800&family=Source+Sans+3:wght@400;500;600&display=swap');
         * { box-sizing:border-box; margin:0; padding:0; }
-        @keyframes fadeUp { from{opacity:0;transform:translateY(30px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes fadeUp { from{opacity:0;transform:translateY(24px)} to{opacity:1;transform:translateY(0)} }
         @keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
-        .auth-input { background:#111827; border:1px solid #1f2937; border-radius:12px; color:#e2e8f0; font-family:inherit; font-size:15px; padding:13px 16px; width:100%; outline:none; transition:border .2s; }
-        .auth-input:focus { border-color:#6366f1; }
-        .auth-btn { border:none; cursor:pointer; font-family:inherit; font-weight:700; border-radius:12px; transition:all .15s; width:100%; padding:14px; font-size:16px; }
-        .auth-btn:hover { filter:brightness(1.1); transform:translateY(-1px); }
-        .tab { cursor:pointer; padding:10px 24px; border-radius:10px; font-weight:600; font-size:14px; transition:all .2s; }
+        .a-input { background:#1e1e1e; border:1px solid #3a3a3a; border-radius:4px; color:#f0f0f0; font-family:'Source Sans 3',sans-serif; font-size:15px; padding:12px 14px; width:100%; outline:none; transition:border .2s; }
+        .a-input:focus { border-color:${C.gold}; }
+        .a-btn { border:none; cursor:pointer; font-family:'Source Sans 3',sans-serif; font-weight:600; border-radius:4px; transition:all .15s; width:100%; padding:13px; font-size:15px; letter-spacing:.5px; }
+        .a-btn:hover { filter:brightness(1.1); }
+        .tab-auth { cursor:pointer; padding:9px 20px; font-family:'Source Sans 3',sans-serif; font-weight:600; font-size:13px; letter-spacing:.5px; text-transform:uppercase; transition:all .2s; border-bottom:2px solid transparent; }
       `}</style>
-      <div style={{ width:420, maxWidth:"95vw", animation:"fadeUp .4s" }}>
-        <div style={{ textAlign:"center", marginBottom:32 }}>
-          <div style={{ width:56, height:56, background:"linear-gradient(135deg,#6366f1,#8b5cf6)", borderRadius:16, display:"inline-flex", alignItems:"center", justifyContent:"center", fontSize:28, marginBottom:12 }}>⚡</div>
-          <h1 style={{ fontFamily:"'Syne',sans-serif", fontWeight:800, fontSize:28, color:"#e2e8f0", letterSpacing:"-0.5px" }}>DemeritOS</h1>
-          <p style={{ color:"#6b7280", fontSize:14, marginTop:4 }}>Sistema Escolar de Deméritos</p>
+
+      <div style={{ width:440, maxWidth:"95vw", animation:"fadeUp .4s" }}>
+        {/* Header institucional */}
+        <div style={{ background:C.blackSoft, border:`1px solid ${C.border}`, borderBottom:"none", borderRadius:"6px 6px 0 0", padding:"28px 32px 24px", textAlign:"center" }}>
+          <GermanStripe />
+          <div style={{ marginTop:20, marginBottom:16 }}>
+            <img src={LOGO_URL} alt="CEAH Logo" style={{ width:90, height:90, objectFit:"contain", filter:"drop-shadow(0 2px 8px rgba(0,0,0,0.5))" }}
+              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+          </div>
+          <h1 style={{ fontFamily:"'Playfair Display', serif", fontWeight:800, fontSize:18, color:C.white, letterSpacing:".5px", lineHeight:1.3, marginBottom:4 }}>
+            Complejo Educativo<br/>Alejandro de Humboldt
+          </h1>
+          <p style={{ color:C.gold, fontSize:12, fontFamily:"'Source Sans 3',sans-serif", fontWeight:600, letterSpacing:"2px", textTransform:"uppercase", marginTop:6 }}>Sistema de Control de Deméritos</p>
+          <div style={{ marginTop:16 }}><GermanStripe /></div>
         </div>
-        <div style={{ background:"#111827", border:"1px solid #1f2937", borderRadius:20, padding:32 }}>
-          <div style={{ display:"flex", background:"#0d1117", borderRadius:12, padding:4, marginBottom:24, gap:4 }}>
+
+        {/* Formulario */}
+        <div style={{ background:C.cardBg, border:`1px solid ${C.border}`, borderTop:"none", borderRadius:"0 0 6px 6px", padding:"0 32px 28px" }}>
+          {/* Tabs */}
+          <div style={{ display:"flex", borderBottom:`1px solid ${C.border}`, marginBottom:24 }}>
             {(["login","register"] as const).map(m => (
-              <div key={m} className="tab" onClick={() => { setMode(m); setError(""); }}
-                style={{ flex:1, textAlign:"center", background:mode===m?"linear-gradient(135deg,#6366f1,#8b5cf6)":"transparent", color:mode===m?"#fff":"#6b7280" }}>
-                {m === "login" ? "Iniciar sesión" : "Registrarse"}
+              <div key={m} className="tab-auth" onClick={() => { setMode(m); setError(""); }}
+                style={{ color: mode===m ? C.gold : C.gray, borderBottomColor: mode===m ? C.gold : "transparent" }}>
+                {m === "login" ? "Iniciar Sesión" : "Registrarse"}
               </div>
             ))}
           </div>
-          <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+
+          <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
             <div>
-              <label style={{ fontSize:12, color:"#9ca3af", fontWeight:600, textTransform:"uppercase", letterSpacing:".5px", display:"block", marginBottom:6 }}>Correo electrónico</label>
-              <input className="auth-input" type="email" placeholder="maestro@escuela.com" value={email} onChange={e => setEmail(e.target.value)} />
+              <label style={{ fontSize:11, color:C.gray, fontFamily:"'Source Sans 3',sans-serif", fontWeight:600, textTransform:"uppercase", letterSpacing:"1px", display:"block", marginBottom:6 }}>Correo Electrónico</label>
+              <input className="a-input" type="email" placeholder="docente@ceah.edu.sv" value={email} onChange={e => setEmail(e.target.value)} />
             </div>
             <div>
-              <label style={{ fontSize:12, color:"#9ca3af", fontWeight:600, textTransform:"uppercase", letterSpacing:".5px", display:"block", marginBottom:6 }}>Contraseña</label>
-              <input className="auth-input" type="password" placeholder="Mínimo 6 caracteres" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key==="Enter" && handleSubmit()} />
+              <label style={{ fontSize:11, color:C.gray, fontFamily:"'Source Sans 3',sans-serif", fontWeight:600, textTransform:"uppercase", letterSpacing:"1px", display:"block", marginBottom:6 }}>Contraseña</label>
+              <input className="a-input" type="password" placeholder="Mínimo 6 caracteres" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key==="Enter" && handleSubmit()} />
             </div>
             {mode === "register" && (
               <div>
-                <label style={{ fontSize:12, color:"#9ca3af", fontWeight:600, textTransform:"uppercase", letterSpacing:".5px", display:"block", marginBottom:6 }}>Código de invitación</label>
-                <input className="auth-input" type="text" placeholder="Solicítalo al administrador" value={inviteCode} onChange={e => setInviteCode(e.target.value.toUpperCase())} />
+                <label style={{ fontSize:11, color:C.gray, fontFamily:"'Source Sans 3',sans-serif", fontWeight:600, textTransform:"uppercase", letterSpacing:"1px", display:"block", marginBottom:6 }}>Código de Autorización</label>
+                <input className="a-input" type="text" placeholder="Solicitarlo a Dirección" value={inviteCode} onChange={e => setInviteCode(e.target.value.toUpperCase())} />
               </div>
             )}
             {error && (
-              <div style={{ background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.3)", borderRadius:10, padding:"10px 14px", fontSize:13, color:"#f87171" }}>⚠️ {error}</div>
+              <div style={{ background:"rgba(204,0,0,0.1)", border:`1px solid rgba(204,0,0,0.4)`, borderRadius:4, padding:"10px 14px", fontSize:13, color:"#ff6666", fontFamily:"'Source Sans 3',sans-serif" }}>
+                ⚠ {error}
+              </div>
             )}
-            <button className="auth-btn" onClick={handleSubmit} disabled={loading} style={{ background:"linear-gradient(135deg,#6366f1,#8b5cf6)", color:"#fff", marginTop:4 }}>
+            <button className="a-btn" onClick={handleSubmit} disabled={loading}
+              style={{ background:`linear-gradient(135deg,${C.red},${C.redDark})`, color:"#fff", marginTop:4, borderTop:`2px solid ${C.gold}` }}>
               {loading ? (
                 <span style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
-                  <span style={{ width:16, height:16, border:"2px solid rgba(255,255,255,0.3)", borderTop:"2px solid #fff", borderRadius:"50%", animation:"spin 1s linear infinite", display:"inline-block" }} />
+                  <span style={{ width:14, height:14, border:"2px solid rgba(255,255,255,0.3)", borderTop:"2px solid #fff", borderRadius:"50%", animation:"spin 1s linear infinite", display:"inline-block" }} />
                   Procesando...
                 </span>
-              ) : mode === "login" ? "Entrar" : "Crear cuenta"}
+              ) : mode === "login" ? "INGRESAR AL SISTEMA" : "CREAR CUENTA"}
             </button>
           </div>
-          {mode === "register" && <p style={{ fontSize:12, color:"#4b5563", textAlign:"center", marginTop:16 }}>Necesitas un código de invitación para registrarte.</p>}
+          {mode === "register" && <p style={{ fontSize:11, color:C.gray, textAlign:"center", marginTop:14, fontFamily:"'Source Sans 3',sans-serif", letterSpacing:".3px" }}>El código de autorización es otorgado exclusivamente por la Dirección del plantel.</p>}
         </div>
+
+        <p style={{ textAlign:"center", color:"#444", fontSize:11, marginTop:16, fontFamily:"'Source Sans 3',sans-serif" }}>© 2026 CEAH · Ahuachapán, El Salvador</p>
       </div>
     </div>
   );
 }
 
+// ── App principal ────────────────────────────────────────────────────────────
 export default function DemeritosApp() {
   const [user, setUser] = useState<User | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
@@ -189,18 +217,21 @@ export default function DemeritosApp() {
   const [view, setView] = useState("dashboard");
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [showModal, setShowModal] = useState(false);
-  const [modalType, setModalType] = useState<"add" | "remove">("add");
+  const [modalType, setModalType] = useState<"add"|"remove">("add");
   const [form, setForm] = useState({ reason: REASONS[0], points: 1, customReason: "" });
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [toast, setToast] = useState<Toast | null>(null);
   const [search, setSearch] = useState("");
   const [addStudentModal, setAddStudentModal] = useState(false);
   const [newStudent, setNewStudent] = useState({ name: "", grade: "" });
-  const [deleteConfirmStudent, setDeleteConfirmStudent] = useState<Student | null>(null);
   const [periodModal, setPeriodModal] = useState(false);
   const [periodName, setPeriodName] = useState("");
   const [archivedPeriods, setArchivedPeriods] = useState<ArchivedPeriod[]>([]);
   const [demeritAlert, setDemeritAlert] = useState<{ student: Student; milestone: number } | null>(null);
+  // Password protection
+  const [pwModal, setPwModal] = useState<{ action: "delete-student" | "remove-demerit" | "archive-period"; payload?: unknown } | null>(null);
+  const [pwInput, setPwInput] = useState("");
+  const [pwError, setPwError] = useState("");
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => { setUser(u); setAuthChecked(true); });
@@ -209,32 +240,23 @@ export default function DemeritosApp() {
 
   useEffect(() => {
     if (!user) return;
-    const unsub = onSnapshot(collection(db, "students"), (snapshot) => {
-      const data = snapshot.docs.map((d) => ({ id: d.id, ...d.data() })) as Student[];
+    const unsub = onSnapshot(collection(db, "students"), (snap) => {
+      const data = snap.docs.map(d => ({ id: d.id, ...d.data() })) as Student[];
       setStudents(data);
       setLoadingData(false);
-      const high = data.filter((s: Student) => s.demerits >= 5);
-      setNotifications(high.map((s: Student) => ({
-        id: s.id,
-        message: `${s.name} tiene ${s.demerits} deméritos (${getRiskLevel(s.demerits).label})`,
-        level: getRiskLevel(s.demerits),
+      setNotifications(data.filter(s => s.demerits >= 3).map(s => ({
+        id: s.id, message: `${s.name} — ${s.demerits} deméritos acumulados`, level: getRiskLevel(s.demerits),
       })));
     });
-    const unsubArchive = onSnapshot(collection(db, "archivedPeriods"), (snapshot) => {
-      const data = snapshot.docs.map((d) => ({ id: d.id, ...d.data() })) as ArchivedPeriod[];
+    const unsubArchive = onSnapshot(collection(db, "archivedPeriods"), (snap) => {
+      const data = snap.docs.map(d => ({ id: d.id, ...d.data() })) as ArchivedPeriod[];
       setArchivedPeriods(data.sort((a, b) => b.archivedAt.localeCompare(a.archivedAt)));
     });
     return () => { unsub(); unsubArchive(); };
   }, [user]);
 
-  const showToast = (msg: string, type: "success" | "warning" | "error" = "success") => {
-    setToast({ msg, type });
-    setTimeout(() => setToast(null), 3000);
-  };
-
-  const openModal = (student: Student, type: "add" | "remove") => {
-    setSelectedStudent(student); setModalType(type);
-    setForm({ reason: REASONS[0], points: 1, customReason: "" }); setShowModal(true);
+  const showToast = (msg: string, type: "success"|"warning"|"error" = "success") => {
+    setToast({ msg, type }); setTimeout(() => setToast(null), 3500);
   };
 
   const handleSubmit = async () => {
@@ -243,183 +265,228 @@ export default function DemeritosApp() {
     const pts = parseInt(String(form.points));
     if (!reason || pts < 1) return;
     const today = new Date().toISOString().split("T")[0];
-    const ref = doc(db, "students", selectedStudent.id);
-    const newDemerits = modalType === "add" ? selectedStudent.demerits + pts : Math.max(0, selectedStudent.demerits - pts);
-    await updateDoc(ref, { demerits: newDemerits, history: arrayUnion({ date: today, reason, points: pts, type: modalType }) });
+    const newDem = modalType === "add"
+      ? Math.min(15, selectedStudent.demerits + pts)
+      : Math.max(0, selectedStudent.demerits - pts);
+    await updateDoc(doc(db, "students", selectedStudent.id), {
+      demerits: newDem, history: arrayUnion({ date: today, reason, points: pts, type: modalType, teacher: user?.email ?? "Desconocido" }),
+    });
     setShowModal(false);
-    // Check demerit milestones
     if (modalType === "add") {
-      const milestones = [5, 10, 15];
-      for (const milestone of milestones) {
-        if (selectedStudent.demerits < milestone && newDemerits >= milestone) {
-          setDemeritAlert({ student: { ...selectedStudent, demerits: newDemerits }, milestone });
+      for (const milestone of [3, 6, 10, 15]) {
+        if (selectedStudent.demerits < milestone && newDem >= milestone) {
+          setDemeritAlert({ student: { ...selectedStudent, demerits: newDem }, milestone });
           break;
         }
       }
-      showToast(`+${pts} deméritos asignados a ${selectedStudent.name}`, "warning");
+      showToast(`${pts} deméritos registrados — ${selectedStudent.name}`, "warning");
     } else {
-      showToast(`-${pts} deméritos removidos de ${selectedStudent.name}`, "success");
+      showToast(`${pts} deméritos removidos — ${selectedStudent.name}`, "success");
     }
   };
 
   const handleAddStudent = async () => {
     if (!newStudent.name || !newStudent.grade) return;
-    const initials = newStudent.name.split(" ").map((w: string) => w[0]).join("").substring(0, 2).toUpperCase();
+    const initials = newStudent.name.split(" ").map((w:string) => w[0]).join("").substring(0,2).toUpperCase();
     await setDoc(doc(db, "students", Date.now().toString()), { name: newStudent.name, grade: newStudent.grade, avatar: initials, demerits: 0, history: [] });
-    setAddStudentModal(false); setNewStudent({ name: "", grade: "" });
-    showToast(`${newStudent.name} agregado exitosamente`);
+    setAddStudentModal(false); setNewStudent({ name:"", grade:"" });
+    showToast(`Estudiante ${newStudent.name} registrado correctamente.`);
   };
 
-  const handleDeleteStudent = async (student: Student) => {
-    await deleteDoc(doc(db, "students", student.id));
-    setDeleteConfirmStudent(null);
-    showToast(`${student.name} eliminado`, "error");
+  // Password-protected actions
+  const requirePassword = (action: "delete-student" | "remove-demerit" | "archive-period", payload?: unknown) => {
+    setPwInput(""); setPwError(""); setPwModal({ action, payload });
   };
 
-  const handleArchivePeriod = async () => {
-    if (!periodName.trim()) return;
-    const today = new Date().toISOString().split("T")[0];
-    await addDoc(collection(db, "archivedPeriods"), {
-      name: periodName.trim(),
-      archivedAt: today,
-      students: students,
-    });
-    // Reset all students' demerits and history
-    for (const s of students) {
-      await updateDoc(doc(db, "students", s.id), { demerits: 0, history: [] });
+  const handlePasswordConfirm = async () => {
+    if (pwInput !== ADMIN_PASSWORD) {
+      setPwError("Contraseña incorrecta. Intente nuevamente."); setPwInput(""); return;
     }
-    setPeriodModal(false);
-    setPeriodName("");
-    showToast(`Periodo "${periodName}" archivado. ¡Nuevo periodo iniciado!`);
+    if (!pwModal) return;
+    const { action, payload } = pwModal;
+    setPwModal(null); setPwInput(""); setPwError("");
+    if (action === "delete-student") {
+      const s = payload as Student;
+      await deleteDoc(doc(db, "students", s.id));
+      showToast(`${s.name} eliminado del registro.`, "error");
+    } else if (action === "remove-demerit") {
+      setShowModal(true);
+    } else if (action === "archive-period") {
+      const name = payload as string;
+      const today = new Date().toISOString().split("T")[0];
+      await addDoc(collection(db, "archivedPeriods"), { name, archivedAt: today, students });
+      for (const s of students) {
+        await updateDoc(doc(db, "students", s.id), { demerits: 0, history: [] });
+      }
+      setPeriodModal(false); setPeriodName("");
+      showToast(`Periodo "${name}" archivado. Nuevo periodo iniciado.`);
+    }
   };
 
-  const handleLogout = async () => { await signOut(auth); };
+  const handleDeleteStudent = (student: Student) => {
+    requirePassword("delete-student", student);
+  };
 
-  const sorted = [...students].filter((s: Student) => s.name.toLowerCase().includes(search.toLowerCase()) || s.grade.toLowerCase().includes(search.toLowerCase())).sort((a: Student, b: Student) => b.demerits - a.demerits);
-  const totalDemerits = students.reduce((sum: number, s: Student) => sum + s.demerits, 0);
-  const criticalCount = students.filter((s: Student) => s.demerits > 10).length;
-  const topStudents = [...students].sort((a: Student, b: Student) => b.demerits - a.demerits).slice(0, 3);
+  const openModalProtected = (s: Student, t: "add" | "remove") => {
+    setSelectedStudent(s); setModalType(t); setForm({ reason: REASONS[0], points: 1, customReason: "" });
+    if (t === "remove") { requirePassword("remove-demerit"); }
+    else { setShowModal(true); }
+  };
+
+  const handleArchivePeriod = () => {
+    if (!periodName.trim()) return;
+    setPeriodModal(false);
+    setTimeout(() => requirePassword("archive-period", periodName.trim()), 50);
+  };
+
+  const sorted = [...students].filter(s => s.name.toLowerCase().includes(search.toLowerCase()) || s.grade.toLowerCase().includes(search.toLowerCase())).sort((a,b) => b.demerits - a.demerits);
+  const totalDem = students.reduce((s,x) => s + x.demerits, 0);
+  const critCount = students.filter(s => s.demerits > 10).length;
+  const topStudents = [...students].sort((a,b) => b.demerits - a.demerits).slice(0,3);
 
   if (!authChecked) return (
-    <div style={{ minHeight:"100vh", background:"#0a0a0f", display:"flex", alignItems:"center", justifyContent:"center" }}>
+    <div style={{ minHeight:"100vh", background:C.pageBg, display:"flex", alignItems:"center", justifyContent:"center" }}>
       <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
-      <div style={{ width:40, height:40, border:"3px solid #1f2937", borderTop:"3px solid #6366f1", borderRadius:"50%", animation:"spin 1s linear infinite" }} />
+      <div style={{ width:36, height:36, border:`3px solid ${C.border}`, borderTop:`3px solid ${C.gold}`, borderRadius:"50%", animation:"spin 1s linear infinite" }} />
     </div>
   );
 
   if (!user) return <AuthScreen />;
 
   return (
-    <div style={{ minHeight:"100vh", background:"#0a0a0f", fontFamily:"'DM Sans','Segoe UI',sans-serif", color:"#e2e8f0", display:"flex", flexDirection:"column" }}>
+    <div style={{ minHeight:"100vh", background:C.pageBg, fontFamily:"'Source Sans 3','Segoe UI',sans-serif", color:C.white, display:"flex", flexDirection:"column" }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Syne:wght@700;800&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800&family=Source+Sans+3:wght@400;500;600;700&display=swap');
         * { box-sizing:border-box; margin:0; padding:0; }
-        ::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:#111}::-webkit-scrollbar-thumb{background:#333;border-radius:3px}
-        @keyframes slideIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+        ::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:#111}::-webkit-scrollbar-thumb{background:#3a3a3a;border-radius:2px}
+        @keyframes slideIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
         @keyframes fadeIn{from{opacity:0}to{opacity:1}}
-        @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.6}}
-        @keyframes toastIn{from{opacity:0;transform:translateX(100px)}to{opacity:1;transform:translateX(0)}}
+        @keyframes toastIn{from{opacity:0;transform:translateX(80px)}to{opacity:1;transform:translateX(0)}}
         @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
-        .card{background:#111827;border:1px solid #1f2937;border-radius:16px;transition:all .2s}
-        .card:hover{border-color:#374151;transform:translateY(-2px)}
-        .btn{border:none;cursor:pointer;font-family:inherit;font-weight:600;border-radius:10px;transition:all .15s}
-        .btn:hover{transform:translateY(-1px);filter:brightness(1.1)}
-        .nav-item{cursor:pointer;padding:10px 18px;border-radius:10px;font-weight:500;font-size:14px;transition:all .2s;display:flex;align-items:center;gap:8px}
-        .nav-item:hover{background:rgba(255,255,255,0.06)}
-        .nav-item.active{background:rgba(99,102,241,0.2);color:#818cf8}
-        .input{background:#1a2035;border:1px solid #2d3748;border-radius:10px;color:#e2e8f0;font-family:inherit;font-size:14px;padding:10px 14px;width:100%;transition:border .2s;outline:none}
-        .input:focus{border-color:#6366f1}
-        .overlay{position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:100;animation:fadeIn .2s}
-        .modal{background:#111827;border:1px solid #1f2937;border-radius:20px;padding:28px;width:420px;max-width:95vw;animation:slideIn .25s}
-        .badge{padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;letter-spacing:.5px}
-        .progress-bar{height:6px;border-radius:3px;background:#1f2937;overflow:hidden}
-        .progress-fill{height:100%;border-radius:3px;transition:width .8s cubic-bezier(.34,1.56,.64,1)}
-        .student-row{display:grid;grid-template-columns:48px 1fr auto auto;align-items:center;gap:16px;padding:14px 18px;border-radius:14px;border:1px solid #1f2937;background:#111827;margin-bottom:8px;animation:slideIn .3s;transition:all .2s}
-        .student-row:hover{border-color:#374151;background:#131a2e}
+        @keyframes pulse{0%,100%{opacity:1}50%{opacity:.6}}
+        .card { background:${C.cardBg}; border:1px solid ${C.border}; border-radius:4px; transition:all .2s; }
+        .card:hover { border-color:#555; }
+        .btn { border:none; cursor:pointer; font-family:'Source Sans 3',sans-serif; font-weight:600; border-radius:3px; transition:all .15s; letter-spacing:.3px; }
+        .btn:hover { filter:brightness(1.1); }
+        .nav-item { cursor:pointer; padding:0 20px; height:64px; font-weight:600; font-size:13px; transition:all .2s; display:flex; align-items:center; gap:8px; letter-spacing:.5px; text-transform:uppercase; border-bottom:3px solid transparent; }
+        .nav-item:hover { color:${C.white}; border-bottom-color:#444; }
+        .nav-item.active { color:${C.gold}; border-bottom-color:${C.gold}; }
+        .input { background:#1e1e1e; border:1px solid #3a3a3a; border-radius:3px; color:#f0f0f0; font-family:'Source Sans 3',sans-serif; font-size:14px; padding:10px 12px; width:100%; transition:border .2s; outline:none; }
+        .input:focus { border-color:${C.gold}; }
+        .overlay { position:fixed;inset:0;background:rgba(0,0,0,0.75);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;z-index:100;animation:fadeIn .2s; }
+        .modal { background:${C.cardBg};border:1px solid ${C.border};border-radius:4px;padding:28px;width:440px;max-width:95vw;animation:slideIn .2s; }
+        .badge { padding:2px 10px; border-radius:2px; font-size:11px; font-weight:700; letter-spacing:1px; text-transform:uppercase; }
+        .progress-bar { height:4px; border-radius:2px; background:#333; overflow:hidden; }
+        .progress-fill { height:100%; border-radius:2px; transition:width .6s ease; }
+        .student-row { display:grid; grid-template-columns:48px 1fr auto auto; align-items:center; gap:16px; padding:14px 18px; border-radius:4px; border:1px solid ${C.border}; background:${C.cardBg}; margin-bottom:6px; transition:all .2s; }
+        .student-row:hover { border-color:#555; background:#272727; }
+        .divider { height:1px; background:${C.border}; margin:20px 0; }
       `}</style>
 
-      <header style={{ background:"#0d1117", borderBottom:"1px solid #1f2937", padding:"0 24px", display:"flex", alignItems:"center", gap:24, height:64, position:"sticky", top:0, zIndex:50 }}>
-        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-          <div style={{ width:32, height:32, background:"linear-gradient(135deg,#6366f1,#8b5cf6)", borderRadius:8, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>⚡</div>
-          <span style={{ fontFamily:"'Syne',sans-serif", fontWeight:800, fontSize:18, letterSpacing:"-0.5px" }}>DemeritOS</span>
+      {/* Header institucional */}
+      <div><GermanStripe /></div>
+      <header style={{ background:C.blackSoft, borderBottom:`1px solid ${C.border}`, padding:"0 32px", display:"flex", alignItems:"center", gap:20, height:64, position:"sticky", top:0, zIndex:50 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:12, paddingRight:20, borderRight:`1px solid ${C.border}` }}>
+          <img src={LOGO_URL} alt="CEAH" style={{ width:38, height:38, objectFit:"contain" }}
+            onError={(e) => { (e.target as HTMLImageElement).style.display="none"; }} />
+          <div>
+            <div style={{ fontFamily:"'Playfair Display',serif", fontWeight:700, fontSize:14, color:C.white, letterSpacing:".3px" }}>C.E.A.H.</div>
+            <div style={{ fontSize:10, color:C.gold, fontWeight:600, letterSpacing:"1.5px", textTransform:"uppercase" }}>Sistema de Deméritos</div>
+          </div>
         </div>
-        <nav style={{ display:"flex", gap:4, flex:1 }}>
-          {[["dashboard","📊","Dashboard"],["students","👥","Estudiantes"],["ranking","🏆","Ranking"],["alerts","🔔","Alertas"]].map(([v, icon, label]) => (
-            <div key={v} className={`nav-item ${view===v?"active":""}`} onClick={() => setView(v)}>
-              <span>{icon}</span><span>{label}</span>
-              {v==="alerts" && notifications.length > 0 && <span style={{ background:"#ef4444", color:"#fff", borderRadius:"50%", width:18, height:18, display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:700 }}>{notifications.length}</span>}
+        <nav style={{ display:"flex", flex:1 }}>
+          {[["dashboard","Panel General"],["students","Estudiantes"],["ranking","Clasificación"],["alerts","Alertas"]].map(([v, label]) => (
+            <div key={v} className={`nav-item ${view===v?"active":""}`} onClick={() => setView(v)} style={{ color: view===v ? C.gold : "#888", fontSize:12 }}>
+              <span>{label}</span>
+              {v==="alerts" && notifications.length > 0 && <span style={{ background:C.red, color:"#fff", borderRadius:"50%", width:17, height:17, display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, fontWeight:700 }}>{notifications.length}</span>}
             </div>
           ))}
         </nav>
         <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-          <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-            <div style={{ width:30, height:30, borderRadius:"50%", background:"linear-gradient(135deg,#6366f1,#8b5cf6)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, fontWeight:700, color:"#fff" }}>{user.email?.[0].toUpperCase()}</div>
-            <span style={{ fontSize:12, color:"#9ca3af", maxWidth:140, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{user.email}</span>
+          <div style={{ display:"flex", alignItems:"center", gap:8, paddingRight:12, borderRight:`1px solid ${C.border}` }}>
+            <div style={{ width:28, height:28, borderRadius:"50%", background:C.red, border:`2px solid ${C.gold}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:700, color:"#fff" }}>{user.email?.[0].toUpperCase()}</div>
+            <span style={{ fontSize:12, color:"#aaa", maxWidth:160, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{user.email}</span>
           </div>
-          <button className="btn" onClick={handleLogout} style={{ background:"rgba(239,68,68,0.15)", color:"#ef4444", padding:"7px 14px", fontSize:13 }}>Salir</button>
-          <button className="btn" onClick={() => setPeriodModal(true)} style={{ background:"rgba(245,158,11,0.15)", color:"#f59e0b", padding:"9px 14px", fontSize:13 }}>📦 Archivar Periodo</button>
-          <button className="btn" onClick={() => setAddStudentModal(true)} style={{ background:"linear-gradient(135deg,#6366f1,#8b5cf6)", color:"#fff", padding:"9px 18px", fontSize:14 }}>+ Estudiante</button>
+          <button className="btn" onClick={() => signOut(auth)} style={{ background:"transparent", border:`1px solid #444`, color:"#888", padding:"6px 14px", fontSize:12 }}>Cerrar Sesión</button>
+          <button className="btn" onClick={() => setPeriodModal(true)} style={{ background:"transparent", border:`1px solid ${C.gold}`, color:C.gold, padding:"6px 14px", fontSize:12 }}>📦 Archivar Periodo</button>
+          <button className="btn" onClick={() => setAddStudentModal(true)} style={{ background:C.red, border:`1px solid ${C.redDark}`, color:"#fff", padding:"7px 16px", fontSize:12 }}>+ Registrar Alumno</button>
         </div>
       </header>
 
+      {/* Toast */}
       {toast && (
-        <div style={{ position:"fixed", top:80, right:24, zIndex:200, animation:"toastIn .3s", background:toast.type==="warning"?"#92400e":toast.type==="error"?"#7f1d1d":"#064e3b", border:`1px solid ${toast.type==="warning"?"#d97706":toast.type==="error"?"#ef4444":"#10b981"}`, borderRadius:12, padding:"12px 18px", fontSize:14, fontWeight:500, maxWidth:340, boxShadow:"0 8px 24px rgba(0,0,0,0.4)" }}>
+        <div style={{ position:"fixed", top:76, right:24, zIndex:200, animation:"toastIn .3s",
+          background: toast.type==="warning" ? "#3a1500" : toast.type==="error" ? "#2a0000" : "#0a2a0a",
+          border:`1px solid ${toast.type==="warning"?C.gold:toast.type==="error"?C.red:"#22c55e"}`,
+          borderRadius:3, padding:"11px 16px", fontSize:13, maxWidth:360, boxShadow:"0 4px 20px rgba(0,0,0,0.5)",
+          fontFamily:"'Source Sans 3',sans-serif" }}>
           {toast.msg}
         </div>
       )}
 
       {loadingData ? (
         <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:16 }}>
-          <div style={{ width:40, height:40, border:"3px solid #1f2937", borderTop:"3px solid #6366f1", borderRadius:"50%", animation:"spin 1s linear infinite" }} />
-          <p style={{ color:"#6b7280", fontSize:14 }}>Cargando datos...</p>
+          <div style={{ width:36, height:36, border:`3px solid ${C.border}`, borderTop:`3px solid ${C.gold}`, borderRadius:"50%", animation:"spin 1s linear infinite" }} />
+          <p style={{ color:"#666", fontSize:13, letterSpacing:".5px" }}>Cargando registros...</p>
         </div>
       ) : (
-        <main style={{ flex:1, padding:24, maxWidth:1200, margin:"0 auto", width:"100%" }}>
+        <main style={{ flex:1, padding:"28px 32px", maxWidth:1280, margin:"0 auto", width:"100%" }}>
+
+          {/* DASHBOARD */}
           {view === "dashboard" && (
             <div style={{ animation:"slideIn .3s" }}>
-              <h1 style={{ fontFamily:"'Syne',sans-serif", fontSize:28, fontWeight:800, marginBottom:4 }}>Panel General</h1>
-              <p style={{ color:"#6b7280", fontSize:14, marginBottom:24 }}>Bienvenido, {user.email} ☁️</p>
-              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))", gap:16, marginBottom:28 }}>
-                {[{ label:"Total Estudiantes", value:students.length, icon:"👥", color:"#6366f1" },{ label:"Deméritos Totales", value:totalDemerits, icon:"⚡", color:"#f59e0b" },{ label:"En Zona Crítica", value:criticalCount, icon:"🚨", color:"#ef4444" },{ label:"Sin Deméritos", value:students.filter((s:Student)=>s.demerits===0).length, icon:"✅", color:"#22c55e" }].map(({ label, value, icon, color }) => (
-                  <div key={label} className="card" style={{ padding:20 }}>
-                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
-                      <div>
-                        <p style={{ color:"#6b7280", fontSize:12, fontWeight:600, letterSpacing:".5px", textTransform:"uppercase", marginBottom:8 }}>{label}</p>
-                        <p style={{ fontSize:36, fontWeight:800, fontFamily:"'Syne',sans-serif", color, lineHeight:1 }}>{value}</p>
-                      </div>
-                      <span style={{ fontSize:28 }}>{icon}</span>
-                    </div>
+              <div style={{ marginBottom:24 }}>
+                <h1 style={{ fontFamily:"'Playfair Display',serif", fontSize:24, fontWeight:700, color:C.white, marginBottom:4 }}>Panel General</h1>
+                <p style={{ color:"#666", fontSize:13 }}>Complejo Educativo Alejandro de Humboldt — Año escolar 2026</p>
+              </div>
+              <div className="divider" />
+
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:14, marginBottom:28 }}>
+                {[
+                  { label:"Total Alumnos", value:students.length, color:C.gold, border:C.gold },
+                  { label:"Deméritos Totales", value:totalDem, color:"#f97316", border:"#f97316" },
+                  { label:"En Zona Crítica", value:critCount, color:C.red, border:C.red },
+                  { label:"Sin Deméritos", value:students.filter(s=>s.demerits===0).length, color:"#22c55e", border:"#22c55e" },
+                ].map(({ label, value, color, border }) => (
+                  <div key={label} className="card" style={{ padding:"18px 20px", borderTop:`3px solid ${border}` }}>
+                    <p style={{ color:"#666", fontSize:11, fontWeight:700, letterSpacing:"1px", textTransform:"uppercase", marginBottom:10 }}>{label}</p>
+                    <p style={{ fontSize:38, fontWeight:800, fontFamily:"'Playfair Display',serif", color, lineHeight:1 }}>{value}</p>
                   </div>
                 ))}
               </div>
+
               <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
                 <div className="card" style={{ padding:20 }}>
-                  <h3 style={{ fontWeight:700, marginBottom:16, fontSize:15 }}>🔥 Top Deméritos</h3>
-                  {topStudents.length === 0 ? <p style={{ color:"#6b7280", fontSize:13 }}>Aún no hay estudiantes.</p> : topStudents.map((s:Student, i:number) => {
+                  <h3 style={{ fontWeight:700, marginBottom:4, fontSize:13, letterSpacing:"1px", textTransform:"uppercase", color:C.gold }}>Mayores Deméritos</h3>
+                  <div className="divider" style={{ margin:"12px 0" }} />
+                  {topStudents.length === 0 ? <p style={{ color:"#555", fontSize:13 }}>Sin registros.</p> : topStudents.map((s, i) => {
                     const risk = getRiskLevel(s.demerits);
                     return (
                       <div key={s.id} style={{ display:"flex", alignItems:"center", gap:12, marginBottom:14 }}>
-                        <span style={{ fontSize:20 }}>{["🥇","🥈","🥉"][i]}</span>
-                        <div style={{ width:36, height:36, borderRadius:"50%", background:getAvatarColor(s.name), display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, fontWeight:700, color:"#fff", flexShrink:0 }}>{s.avatar}</div>
+                        <span style={{ fontSize:13, fontWeight:700, color:i===0?C.gold:i===1?"#ccc":"#a07050", width:20, textAlign:"center" }}>#{i+1}</span>
+                        <div style={{ width:34, height:34, borderRadius:"50%", background:getAvatarColor(s.name), border:`2px solid ${C.border}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, fontWeight:700, color:"#fff", flexShrink:0 }}>{s.avatar}</div>
                         <div style={{ flex:1 }}>
                           <div style={{ fontSize:14, fontWeight:600 }}>{s.name}</div>
-                          <div className="progress-bar" style={{ marginTop:4 }}><div className="progress-fill" style={{ width:`${Math.min(100,(s.demerits/20)*100)}%`, background:risk.color }} /></div>
+                          <div className="progress-bar" style={{ marginTop:5 }}>
+                            <div className="progress-fill" style={{ width:`${Math.min(100,(s.demerits/20)*100)}%`, background:risk.color }} />
+                          </div>
                         </div>
-                        <span style={{ fontWeight:800, color:risk.color, fontSize:18 }}>{s.demerits}</span>
+                        <span style={{ fontWeight:800, color:risk.color, fontSize:20, fontFamily:"'Playfair Display',serif" }}>{s.demerits}</span>
                       </div>
                     );
                   })}
                 </div>
                 <div className="card" style={{ padding:20 }}>
-                  <h3 style={{ fontWeight:700, marginBottom:16, fontSize:15 }}>📋 Actividad Reciente</h3>
-                  {students.flatMap((s:Student) => (s.history||[]).map((h:HistoryEntry) => ({ ...h, studentName:s.name }))).sort((a,b) => b.date.localeCompare(a.date)).slice(0,6).map((h, i:number) => (
-                    <div key={i} style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10, padding:"8px 12px", background:"#0d1117", borderRadius:10 }}>
-                      <span style={{ fontSize:14 }}>{h.type==="add"?"🔴":"🟢"}</span>
+                  <h3 style={{ fontWeight:700, marginBottom:4, fontSize:13, letterSpacing:"1px", textTransform:"uppercase", color:C.gold }}>Registros Recientes</h3>
+                  <div className="divider" style={{ margin:"12px 0" }} />
+                  {students.flatMap(s => (s.history||[]).map(h => ({ ...h, studentName:s.name }))).sort((a,b) => b.date.localeCompare(a.date)).slice(0,7).map((h, i) => (
+                    <div key={i} style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10, padding:"8px 12px", background:"#1a1a1a", borderRadius:3, borderLeft:`3px solid ${h.type==="add"?C.red:"#22c55e"}` }}>
                       <div style={{ flex:1 }}>
-                        <div style={{ fontSize:13, fontWeight:500 }}>{h.studentName}</div>
-                        <div style={{ fontSize:11, color:"#6b7280" }}>{h.reason} · {h.date}</div>
+                        <div style={{ fontSize:13, fontWeight:600 }}>{h.studentName}</div>
+                        <div style={{ fontSize:11, color:"#666" }}>{h.reason} · {h.date}</div>
+                        {h.teacher && <div style={{ fontSize:10, color:"#444", marginTop:2 }}>👤 {h.teacher}</div>}
                       </div>
-                      <span style={{ fontWeight:700, color:h.type==="add"?"#ef4444":"#22c55e", fontSize:13 }}>{h.type==="add"?"+":"-"}{h.points}</span>
+                      <span style={{ fontWeight:700, color:h.type==="add"?C.red:"#22c55e", fontSize:14 }}>{h.type==="add"?"+":"-"}{h.points}</span>
                     </div>
                   ))}
                 </div>
@@ -427,44 +494,49 @@ export default function DemeritosApp() {
             </div>
           )}
 
+          {/* STUDENTS */}
           {view === "students" && (
             <div style={{ animation:"slideIn .3s" }}>
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-end", marginBottom:16 }}>
                 <div>
-                  <h1 style={{ fontFamily:"'Syne',sans-serif", fontSize:28, fontWeight:800, marginBottom:2 }}>Estudiantes</h1>
-                  <p style={{ color:"#6b7280", fontSize:14 }}>{sorted.length} registrados</p>
+                  <h1 style={{ fontFamily:"'Playfair Display',serif", fontSize:24, fontWeight:700, marginBottom:4 }}>Registro de Estudiantes</h1>
+                  <p style={{ color:"#666", fontSize:13 }}>{sorted.length} alumnos registrados</p>
                 </div>
-                <input className="input" placeholder="🔍 Buscar..." value={search} onChange={e => setSearch(e.target.value)} style={{ width:260 }} />
+                <input className="input" placeholder="Buscar por nombre o sección..." value={search} onChange={e => setSearch(e.target.value)} style={{ width:280 }} />
               </div>
-              {sorted.length === 0 && search.trim() === "" && <div className="card" style={{ padding:40, textAlign:"center", color:"#6b7280" }}>No hay estudiantes. ¡Agrega el primero!</div>}
+              <div className="divider" />
+              {sorted.length === 0 && search.trim() === "" && <div className="card" style={{ padding:40, textAlign:"center", color:"#555" }}>No se encontraron registros.</div>}
               {sorted.length === 0 && search.trim() !== "" && (
                 <div className="card" style={{ padding:32, textAlign:"center" }}>
-                  <div style={{ fontSize:40, marginBottom:12 }}>🔍</div>
-                  <p style={{ fontWeight:600, fontSize:16, marginBottom:6 }}>No se encontró "{search}"</p>
-                  <p style={{ color:"#6b7280", fontSize:13, marginBottom:20 }}>¿Deseas agregar este estudiante?</p>
-                  <button className="btn" onClick={() => { setNewStudent({ name: search, grade: "" }); setAddStudentModal(true); }} style={{ background:"linear-gradient(135deg,#6366f1,#8b5cf6)", color:"#fff", padding:"10px 24px", fontSize:14 }}>
-                    + Agregar "{search}"
+                  <div style={{ fontSize:36, marginBottom:12, color:"#555" }}>⊘</div>
+                  <p style={{ fontFamily:"'Playfair Display',serif", fontWeight:700, fontSize:16, marginBottom:6 }}>No se encontró "{search}"</p>
+                  <p style={{ color:"#555", fontSize:13, marginBottom:20 }}>¿Desea registrar este alumno?</p>
+                  <button className="btn" onClick={() => { setNewStudent({ name: search, grade: "" }); setAddStudentModal(true); }}
+                    style={{ background:C.red, color:"#fff", padding:"9px 22px", fontSize:13, border:`1px solid ${C.redDark}` }}>
+                    + Registrar "{search}"
                   </button>
                 </div>
               )}
-              {sorted.map((s:Student) => {
+              {sorted.map(s => {
                 const risk = getRiskLevel(s.demerits);
                 return (
                   <div key={s.id} className="student-row">
-                    <div style={{ width:46, height:46, borderRadius:"50%", background:getAvatarColor(s.name), display:"flex", alignItems:"center", justifyContent:"center", fontWeight:700, color:"#fff", fontSize:14 }}>{s.avatar}</div>
+                    <div style={{ width:42, height:42, borderRadius:"50%", background:getAvatarColor(s.name), border:`2px solid ${C.border}`, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:700, color:"#fff", fontSize:13 }}>{s.avatar}</div>
                     <div>
                       <div style={{ fontWeight:600, fontSize:15 }}>{s.name}</div>
-                      <div style={{ fontSize:12, color:"#6b7280", marginTop:2 }}>Grupo: {s.grade} · {(s.history||[]).length} registros</div>
-                      <div className="progress-bar" style={{ width:180, marginTop:6 }}><div className="progress-fill" style={{ width:`${Math.min(100,(s.demerits/20)*100)}%`, background:risk.color }} /></div>
+                      <div style={{ fontSize:12, color:"#666", marginTop:2 }}>Sección: {s.grade} &nbsp;·&nbsp; {(s.history||[]).length} registros</div>
+                      <div className="progress-bar" style={{ width:200, marginTop:6 }}>
+                        <div className="progress-fill" style={{ width:`${Math.min(100,(s.demerits/20)*100)}%`, background:risk.color }} />
+                      </div>
                     </div>
-                    <div style={{ textAlign:"center" }}>
-                      <div style={{ fontSize:28, fontWeight:800, fontFamily:"'Syne',sans-serif", color:risk.color }}>{s.demerits}</div>
+                    <div style={{ textAlign:"center", minWidth:70 }}>
+                      <div style={{ fontSize:30, fontWeight:800, fontFamily:"'Playfair Display',serif", color:risk.color, lineHeight:1 }}>{s.demerits}</div>
                       <span className="badge" style={{ background:risk.bg, color:risk.color }}>{risk.label}</span>
                     </div>
                     <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-                      <button className="btn" onClick={() => openModal(s, "add")} style={{ background:"rgba(239,68,68,0.15)", color:"#ef4444", padding:"7px 14px", fontSize:13 }}>+ Demérito</button>
-                      <button className="btn" onClick={() => openModal(s, "remove")} style={{ background:"rgba(34,197,94,0.15)", color:"#22c55e", padding:"7px 14px", fontSize:13 }}>− Remover</button>
-                      <button className="btn" onClick={() => setDeleteConfirmStudent(s)} style={{ background:"rgba(100,116,139,0.15)", color:"#94a3b8", padding:"7px 14px", fontSize:13 }}>🗑 Eliminar</button>
+                      <button className="btn" onClick={() => openModalProtected(s,"add")} style={{ background:C.red, color:"#fff", padding:"7px 14px", fontSize:12 }}>+ Demérito</button>
+                      <button className="btn" onClick={() => openModalProtected(s,"remove")} style={{ background:"#1e1e1e", border:"1px solid #444", color:"#aaa", padding:"7px 14px", fontSize:12 }}>🔒 Remover</button>
+                      <button className="btn" onClick={() => handleDeleteStudent(s)} style={{ background:"#1e1e1e", border:"1px solid #3a3a3a", color:"#666", padding:"7px 14px", fontSize:12 }}>🔒 Eliminar</button>
                     </div>
                   </div>
                 );
@@ -472,23 +544,27 @@ export default function DemeritosApp() {
             </div>
           )}
 
+          {/* RANKING */}
           {view === "ranking" && (
             <div style={{ animation:"slideIn .3s" }}>
-              <h1 style={{ fontFamily:"'Syne',sans-serif", fontSize:28, fontWeight:800, marginBottom:4 }}>🏆 Ranking</h1>
-              <p style={{ color:"#6b7280", fontSize:14, marginBottom:24 }}>Ordenado por deméritos</p>
-              {[...students].sort((a:Student,b:Student) => b.demerits-a.demerits).map((s:Student, i:number) => {
+              <h1 style={{ fontFamily:"'Playfair Display',serif", fontSize:24, fontWeight:700, marginBottom:4 }}>Tabla de Clasificación</h1>
+              <p style={{ color:"#666", fontSize:13, marginBottom:16 }}>Ordenado por acumulación de deméritos</p>
+              <div className="divider" />
+              {[...students].sort((a,b) => b.demerits-a.demerits).map((s, i) => {
                 const risk = getRiskLevel(s.demerits);
-                const max = students.reduce((m:number,x:Student) => Math.max(m,x.demerits), 1);
+                const max = students.reduce((m,x) => Math.max(m,x.demerits), 1);
                 return (
-                  <div key={s.id} className="card" style={{ padding:"16px 20px", marginBottom:10, display:"flex", alignItems:"center", gap:16 }}>
-                    <div style={{ width:36, textAlign:"center", fontFamily:"'Syne',sans-serif", fontWeight:800, fontSize:18, color:i===0?"#fbbf24":i===1?"#9ca3af":i===2?"#cd7c2f":"#4b5563" }}>{i < 3 ? ["🥇","🥈","🥉"][i] : `#${i+1}`}</div>
-                    <div style={{ width:40, height:40, borderRadius:"50%", background:getAvatarColor(s.name), display:"flex", alignItems:"center", justifyContent:"center", fontWeight:700, color:"#fff", fontSize:13 }}>{s.avatar}</div>
+                  <div key={s.id} className="card" style={{ padding:"14px 20px", marginBottom:6, display:"flex", alignItems:"center", gap:16, borderLeft:`4px solid ${i===0?C.gold:i===1?"#ccc":i===2?"#a07050":C.border}` }}>
+                    <div style={{ width:32, textAlign:"center", fontFamily:"'Playfair Display',serif", fontWeight:800, fontSize:16, color:i===0?C.gold:i===1?"#ccc":i===2?"#a07050":"#444" }}>#{i+1}</div>
+                    <div style={{ width:38, height:38, borderRadius:"50%", background:getAvatarColor(s.name), border:`2px solid ${C.border}`, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:700, color:"#fff", fontSize:12 }}>{s.avatar}</div>
                     <div style={{ flex:1 }}>
-                      <div style={{ fontWeight:600, fontSize:15 }}>{s.name} <span style={{ color:"#6b7280", fontWeight:400, fontSize:13 }}>· {s.grade}</span></div>
-                      <div className="progress-bar" style={{ marginTop:6 }}><div className="progress-fill" style={{ width:`${(s.demerits/max)*100}%`, background:risk.color }} /></div>
+                      <div style={{ fontWeight:600, fontSize:15 }}>{s.name} <span style={{ color:"#555", fontWeight:400, fontSize:13 }}>· {s.grade}</span></div>
+                      <div className="progress-bar" style={{ marginTop:6 }}>
+                        <div className="progress-fill" style={{ width:`${(s.demerits/max)*100}%`, background:risk.color }} />
+                      </div>
                     </div>
                     <div style={{ textAlign:"right" }}>
-                      <span style={{ fontSize:26, fontWeight:800, fontFamily:"'Syne',sans-serif", color:risk.color }}>{s.demerits}</span>
+                      <span style={{ fontSize:24, fontWeight:800, fontFamily:"'Playfair Display',serif", color:risk.color }}>{s.demerits}</span>
                       <div><span className="badge" style={{ background:risk.bg, color:risk.color }}>{risk.label}</span></div>
                     </div>
                   </div>
@@ -497,36 +573,41 @@ export default function DemeritosApp() {
             </div>
           )}
 
+          {/* ALERTS */}
           {view === "alerts" && (
             <div style={{ animation:"slideIn .3s" }}>
-              <h1 style={{ fontFamily:"'Syne',sans-serif", fontSize:28, fontWeight:800, marginBottom:4 }}>🔔 Alertas</h1>
-              <p style={{ color:"#6b7280", fontSize:14, marginBottom:24 }}>Estudiantes que requieren atención</p>
+              <h1 style={{ fontFamily:"'Playfair Display',serif", fontSize:24, fontWeight:700, marginBottom:4 }}>Alertas Disciplinarias</h1>
+              <p style={{ color:"#666", fontSize:13, marginBottom:16 }}>Alumnos que han alcanzado 3, 6, 10 o 15 deméritos</p>
+              <div className="divider" />
               {notifications.length === 0 ? (
                 <div className="card" style={{ padding:48, textAlign:"center" }}>
-                  <div style={{ fontSize:48, marginBottom:12 }}>✅</div>
-                  <p style={{ fontWeight:600, fontSize:18 }}>¡Todo en orden!</p>
-                  <p style={{ color:"#6b7280", marginTop:4 }}>Ningún estudiante tiene 5 o más deméritos.</p>
+                  <div style={{ fontSize:40, marginBottom:12, color:"#22c55e" }}>✓</div>
+                  <p style={{ fontFamily:"'Playfair Display',serif", fontWeight:700, fontSize:18, marginBottom:6 }}>Sin alertas activas</p>
+                  <p style={{ color:"#555", fontSize:13 }}>Ningún alumno ha alcanzado 3 o más deméritos.</p>
                 </div>
-              ) : notifications.map((n:Notification) => (
-                <div key={n.id} className="card" style={{ padding:"16px 20px", marginBottom:10, borderColor:n.level.color, borderLeftWidth:4, display:"flex", alignItems:"center", gap:14 }}>
-                  <span style={{ fontSize:28, animation:"pulse 2s infinite" }}>⚠️</span>
+              ) : notifications.map(n => (
+                <div key={n.id} className="card" style={{ padding:"14px 20px", marginBottom:8, borderLeft:`4px solid ${n.level.color}`, display:"flex", alignItems:"center", gap:14 }}>
+                  <span style={{ fontSize:22, animation:"pulse 2s infinite", color:C.red }}>⚠</span>
                   <div style={{ flex:1 }}>
-                    <p style={{ fontWeight:600, fontSize:15 }}>{n.message}</p>
-                    <p style={{ color:"#6b7280", fontSize:12, marginTop:2 }}>Se recomienda notificar a los padres.</p>
+                    <p style={{ fontWeight:600, fontSize:14 }}>{n.message}</p>
+                    <p style={{ color:"#555", fontSize:12, marginTop:3 }}>Se recomienda comunicar a padres de familia y registrar en expediente.</p>
                   </div>
-                  <button className="btn" onClick={() => setView("students")} style={{ background:n.level.bg, color:n.level.color, padding:"8px 14px", fontSize:13 }}>Ver lista</button>
+                  <button className="btn" onClick={() => setView("students")} style={{ background:"#1e1e1e", border:"1px solid #444", color:"#aaa", padding:"7px 14px", fontSize:12 }}>Ver registro</button>
                 </div>
               ))}
-              <h2 style={{ fontFamily:"'Syne',sans-serif", fontSize:20, fontWeight:700, marginTop:28, marginBottom:14 }}>📋 Historial Completo</h2>
-              {students.flatMap((s:Student) => (s.history||[]).map((h:HistoryEntry) => ({ ...h, studentName:s.name, grade:s.grade }))).sort((a,b) => b.date.localeCompare(a.date)).map((h, i:number) => (
-                <div key={i} className="card" style={{ padding:"12px 18px", marginBottom:8, display:"flex", alignItems:"center", gap:12 }}>
-                  <span style={{ fontSize:20 }}>{h.type==="add"?"🔴":"🟢"}</span>
+              <h2 style={{ fontFamily:"'Playfair Display',serif", fontSize:18, fontWeight:700, marginTop:28, marginBottom:12 }}>Historial General</h2>
+              <div className="divider" style={{ margin:"0 0 16px" }} />
+              {students.flatMap(s => (s.history||[]).map(h => ({ ...h, studentName:s.name, grade:s.grade }))).sort((a,b) => b.date.localeCompare(a.date)).map((h, i) => (
+                <div key={i} className="card" style={{ padding:"10px 16px", marginBottom:6, display:"flex", alignItems:"center", gap:12, borderLeft:`3px solid ${h.type==="add"?C.red:"#22c55e"}` }}>
                   <div style={{ flex:1 }}>
-                    <span style={{ fontWeight:600, fontSize:14 }}>{h.studentName}</span>
-                    <span style={{ color:"#6b7280", fontSize:13 }}> · {h.grade} · {h.reason}</span>
+                    <div>
+                      <span style={{ fontWeight:600, fontSize:13 }}>{h.studentName}</span>
+                      <span style={{ color:"#555", fontSize:12 }}> · {h.grade} · {h.reason}</span>
+                    </div>
+                    {h.teacher && <div style={{ fontSize:11, color:"#444", marginTop:2 }}>👤 {h.teacher}</div>}
                   </div>
-                  <span style={{ color:"#6b7280", fontSize:12 }}>{h.date}</span>
-                  <span style={{ fontWeight:700, color:h.type==="add"?"#ef4444":"#22c55e", fontSize:15, minWidth:40, textAlign:"right" }}>{h.type==="add"?"+":"-"}{h.points}</span>
+                  <span style={{ color:"#555", fontSize:11 }}>{h.date}</span>
+                  <span style={{ fontWeight:700, color:h.type==="add"?C.red:"#22c55e", fontSize:14, minWidth:36, textAlign:"right" }}>{h.type==="add"?"+":"-"}{h.points}</span>
                 </div>
               ))}
             </div>
@@ -534,126 +615,176 @@ export default function DemeritosApp() {
         </main>
       )}
 
+      {/* Footer */}
+      <div><GermanStripe /></div>
+      <footer style={{ background:C.blackSoft, borderTop:`1px solid ${C.border}`, padding:"10px 32px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+        <span style={{ fontSize:11, color:"#444" }}>© 2026 Complejo Educativo Alejandro de Humboldt · Ahuachapán, El Salvador</span>
+        <span style={{ fontSize:11, color:"#333" }}>Sistema de Control Disciplinario</span>
+      </footer>
+
+      {/* Modal deméritos */}
       {showModal && selectedStudent && (
         <div className="overlay" onClick={() => setShowModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:20 }}>
-              <div style={{ width:44, height:44, borderRadius:"50%", background:getAvatarColor(selectedStudent.name), display:"flex", alignItems:"center", justifyContent:"center", fontWeight:700, color:"#fff" }}>{selectedStudent.avatar}</div>
-              <div>
-                <h2 style={{ fontFamily:"'Syne',sans-serif", fontWeight:800, fontSize:18 }}>{modalType==="add"?"Asignar Demérito":"Remover Demérito"}</h2>
-                <p style={{ color:"#6b7280", fontSize:13 }}>{selectedStudent.name} · {selectedStudent.grade}</p>
-              </div>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div style={{ borderBottom:`1px solid ${C.border}`, paddingBottom:16, marginBottom:20 }}>
+              <h2 style={{ fontFamily:"'Playfair Display',serif", fontWeight:700, fontSize:18, marginBottom:4 }}>{modalType==="add"?"Registrar Demérito":"Remover Demérito"}</h2>
+              <p style={{ color:"#666", fontSize:13 }}>{selectedStudent.name} · Sección {selectedStudent.grade}</p>
             </div>
             <div style={{ marginBottom:14 }}>
-              <label style={{ fontSize:12, color:"#9ca3af", fontWeight:600, textTransform:"uppercase", letterSpacing:".5px", display:"block", marginBottom:6 }}>Motivo</label>
+              <label style={{ fontSize:11, color:"#666", fontWeight:600, textTransform:"uppercase", letterSpacing:"1px", display:"block", marginBottom:6 }}>Motivo</label>
               <select className="input" value={form.reason} onChange={e => setForm({...form, reason:e.target.value})}>
                 {REASONS.map(r => <option key={r} value={r}>{r}</option>)}
               </select>
             </div>
             {form.reason === "Otro" && (
               <div style={{ marginBottom:14 }}>
-                <input className="input" placeholder="Describe el motivo..." value={form.customReason} onChange={e => setForm({...form, customReason:e.target.value})} />
+                <input className="input" placeholder="Describa el motivo..." value={form.customReason} onChange={e => setForm({...form, customReason:e.target.value})} />
               </div>
             )}
             <div style={{ marginBottom:22 }}>
-              <label style={{ fontSize:12, color:"#9ca3af", fontWeight:600, textTransform:"uppercase", letterSpacing:".5px", display:"block", marginBottom:6 }}>Puntos</label>
-              <input type="number" className="input" min={1} max={20} value={form.points} onChange={e => setForm({...form, points:parseInt(e.target.value)})} />
+              <label style={{ fontSize:11, color:"#666", fontWeight:600, textTransform:"uppercase", letterSpacing:"1px", display:"block", marginBottom:6 }}>Puntos a {modalType==="add"?"asignar":"remover"}</label>
+              <input type="number" className="input" min={1} max={15} value={form.points} onChange={e => setForm({...form, points:parseInt(e.target.value)})} />
             </div>
             <div style={{ display:"flex", gap:10 }}>
-              <button className="btn" onClick={() => setShowModal(false)} style={{ flex:1, background:"#1f2937", color:"#9ca3af", padding:12 }}>Cancelar</button>
-              <button className="btn" onClick={handleSubmit} style={{ flex:2, background:modalType==="add"?"linear-gradient(135deg,#ef4444,#dc2626)":"linear-gradient(135deg,#22c55e,#16a34a)", color:"#fff", padding:12, fontSize:15 }}>
-                {modalType==="add"?`Asignar ${form.points} pts`:`Remover ${form.points} pts`}
+              <button className="btn" onClick={() => setShowModal(false)} style={{ flex:1, background:"#1e1e1e", border:"1px solid #444", color:"#888", padding:12 }}>Cancelar</button>
+              <button className="btn" onClick={handleSubmit} style={{ flex:2, background:modalType==="add"?C.red:"#166534", color:"#fff", padding:12, fontSize:14 }}>
+                {modalType==="add"?`Registrar ${form.points} punto(s)`:`Remover ${form.points} punto(s)`}
               </button>
             </div>
           </div>
         </div>
       )}
 
+      {/* Modal agregar alumno */}
       {addStudentModal && (
         <div className="overlay" onClick={() => setAddStudentModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h2 style={{ fontFamily:"'Syne',sans-serif", fontWeight:800, fontSize:20, marginBottom:20 }}>👤 Nuevo Estudiante</h2>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div style={{ borderBottom:`1px solid ${C.border}`, paddingBottom:16, marginBottom:20 }}>
+              <h2 style={{ fontFamily:"'Playfair Display',serif", fontWeight:700, fontSize:18 }}>Registrar Nuevo Alumno</h2>
+            </div>
             <div style={{ marginBottom:14 }}>
-              <label style={{ fontSize:12, color:"#9ca3af", fontWeight:600, textTransform:"uppercase", letterSpacing:".5px", display:"block", marginBottom:6 }}>Nombre completo</label>
+              <label style={{ fontSize:11, color:"#666", fontWeight:600, textTransform:"uppercase", letterSpacing:"1px", display:"block", marginBottom:6 }}>Nombre Completo</label>
               <input className="input" placeholder="Ej: Ana García Pérez" value={newStudent.name} onChange={e => setNewStudent({...newStudent, name:e.target.value})} />
             </div>
             <div style={{ marginBottom:22 }}>
-              <label style={{ fontSize:12, color:"#9ca3af", fontWeight:600, textTransform:"uppercase", letterSpacing:".5px", display:"block", marginBottom:6 }}>Grupo</label>
+              <label style={{ fontSize:11, color:"#666", fontWeight:600, textTransform:"uppercase", letterSpacing:"1px", display:"block", marginBottom:6 }}>Sección / Grado</label>
               <input className="input" placeholder="Ej: 2°A" value={newStudent.grade} onChange={e => setNewStudent({...newStudent, grade:e.target.value})} />
             </div>
             <div style={{ display:"flex", gap:10 }}>
-              <button className="btn" onClick={() => setAddStudentModal(false)} style={{ flex:1, background:"#1f2937", color:"#9ca3af", padding:12 }}>Cancelar</button>
-              <button className="btn" onClick={handleAddStudent} style={{ flex:2, background:"linear-gradient(135deg,#6366f1,#8b5cf6)", color:"#fff", padding:12, fontSize:15 }}>Agregar</button>
+              <button className="btn" onClick={() => setAddStudentModal(false)} style={{ flex:1, background:"#1e1e1e", border:"1px solid #444", color:"#888", padding:12 }}>Cancelar</button>
+              <button className="btn" onClick={handleAddStudent} style={{ flex:2, background:C.red, color:"#fff", padding:12, fontSize:14 }}>Registrar Alumno</button>
             </div>
           </div>
         </div>
       )}
 
-      {deleteConfirmStudent && (
-        <div className="overlay" onClick={() => setDeleteConfirmStudent(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div style={{ textAlign:"center", marginBottom:20 }}>
-              <div style={{ fontSize:48, marginBottom:12 }}>🗑️</div>
-              <h2 style={{ fontFamily:"'Syne',sans-serif", fontWeight:800, fontSize:20, marginBottom:8 }}>¿Eliminar estudiante?</h2>
-              <p style={{ color:"#9ca3af", fontSize:14 }}>Esto eliminará permanentemente a <strong style={{ color:"#e2e8f0" }}>{deleteConfirmStudent.name}</strong> y todo su historial de deméritos.</p>
+      {/* Modal contraseña administrativa */}
+      {pwModal && (
+        <div className="overlay" onClick={() => { setPwModal(null); setPwInput(""); setPwError(""); }}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div style={{ borderBottom:`1px solid ${C.border}`, paddingBottom:16, marginBottom:20, display:"flex", alignItems:"center", gap:12 }}>
+              <span style={{ fontSize:26, color:C.gold }}>🔒</span>
+              <div>
+                <h2 style={{ fontFamily:"'Playfair Display',serif", fontWeight:700, fontSize:18 }}>Acción Protegida</h2>
+                <p style={{ color:"#666", fontSize:12, marginTop:2 }}>
+                  {pwModal.action === "delete-student" && "Eliminar alumno del registro"}
+                  {pwModal.action === "remove-demerit" && "Remover deméritos de alumno"}
+                  {pwModal.action === "archive-period" && "Archivar periodo e iniciar nuevo"}
+                </p>
+              </div>
             </div>
+            <p style={{ color:"#888", fontSize:13, marginBottom:16 }}>Esta acción requiere autorización. Ingrese la contraseña administrativa para continuar.</p>
+            <div style={{ marginBottom:pwError ? 10 : 22 }}>
+              <label style={{ fontSize:11, color:"#666", fontWeight:600, textTransform:"uppercase", letterSpacing:"1px", display:"block", marginBottom:6 }}>Contraseña Administrativa</label>
+              <input className="input" type="password" placeholder="••••••••••••••••" value={pwInput}
+                onChange={e => { setPwInput(e.target.value); setPwError(""); }}
+                onKeyDown={e => e.key === "Enter" && handlePasswordConfirm()}
+                autoFocus />
+            </div>
+            {pwError && (
+              <div style={{ background:"rgba(204,0,0,0.1)", border:`1px solid rgba(204,0,0,0.4)`, borderRadius:3, padding:"9px 13px", fontSize:13, color:"#ff6666", marginBottom:16 }}>
+                ⚠ {pwError}
+              </div>
+            )}
             <div style={{ display:"flex", gap:10 }}>
-              <button className="btn" onClick={() => setDeleteConfirmStudent(null)} style={{ flex:1, background:"#1f2937", color:"#9ca3af", padding:12 }}>Cancelar</button>
-              <button className="btn" onClick={() => handleDeleteStudent(deleteConfirmStudent)} style={{ flex:2, background:"linear-gradient(135deg,#ef4444,#dc2626)", color:"#fff", padding:12, fontSize:15 }}>Sí, eliminar</button>
+              <button className="btn" onClick={() => { setPwModal(null); setPwInput(""); setPwError(""); }} style={{ flex:1, background:"#1e1e1e", border:"1px solid #444", color:"#888", padding:12 }}>Cancelar</button>
+              <button className="btn" onClick={handlePasswordConfirm}
+                style={{ flex:2, background:`linear-gradient(135deg,${C.gold},${C.goldDark})`, color:C.black, padding:12, fontSize:14, fontWeight:700 }}>
+                Confirmar
+              </button>
             </div>
           </div>
         </div>
       )}
 
+      {/* Modal archivar periodo */}
       {periodModal && (
-        <div className="overlay" onClick={() => setPeriodModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div style={{ textAlign:"center", marginBottom:20 }}>
-              <div style={{ fontSize:48, marginBottom:12 }}>📦</div>
-              <h2 style={{ fontFamily:"'Syne',sans-serif", fontWeight:800, fontSize:20, marginBottom:8 }}>Archivar Periodo</h2>
-              <p style={{ color:"#9ca3af", fontSize:13 }}>Se guardarán todos los registros actuales y se reiniciarán los deméritos de todos los estudiantes para comenzar un nuevo periodo.</p>
+        <div className="overlay">
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div style={{ borderBottom:`1px solid ${C.border}`, paddingBottom:16, marginBottom:20 }}>
+              <h2 style={{ fontFamily:"'Playfair Display',serif", fontWeight:700, fontSize:18, color:C.gold }}>Archivar Periodo Escolar</h2>
             </div>
-            <div style={{ marginBottom:22 }}>
-              <label style={{ fontSize:12, color:"#9ca3af", fontWeight:600, textTransform:"uppercase", letterSpacing:".5px", display:"block", marginBottom:6 }}>Nombre del periodo</label>
-              <input className="input" placeholder="Ej: Semestre 1 - 2025" value={periodName} onChange={e => setPeriodName(e.target.value)} />
+            <p style={{ color:"#888", fontSize:13, marginBottom:20 }}>Se guardarán todos los registros actuales y se reiniciarán los deméritos de todos los alumnos. Se solicitará la contraseña administrativa para confirmar.</p>
+            <div style={{ marginBottom:14 }}>
+              <label style={{ fontSize:11, color:"#666", fontWeight:600, textTransform:"uppercase", letterSpacing:"1px", display:"block", marginBottom:6 }}>Nombre del Periodo</label>
+              <input className="input" placeholder="Ej: 1er Trimestre 2026" value={periodName} onChange={e => setPeriodName(e.target.value)} />
             </div>
             {archivedPeriods.length > 0 && (
               <div style={{ marginBottom:18 }}>
-                <p style={{ fontSize:12, color:"#6b7280", marginBottom:8 }}>Periodos archivados anteriores:</p>
-                {archivedPeriods.slice(0, 3).map(p => (
-                  <div key={p.id} style={{ background:"#0d1117", borderRadius:8, padding:"8px 12px", marginBottom:6, fontSize:13, color:"#9ca3af", display:"flex", justifyContent:"space-between" }}>
-                    <span>{p.name}</span><span style={{ color:"#4b5563" }}>{p.archivedAt}</span>
+                <p style={{ fontSize:11, color:"#555", fontWeight:600, letterSpacing:"1px", textTransform:"uppercase", marginBottom:8 }}>Periodos archivados</p>
+                {archivedPeriods.slice(0,3).map(p => (
+                  <div key={p.id} style={{ background:"#1a1a1a", borderRadius:3, padding:"7px 12px", marginBottom:5, fontSize:13, color:"#777", display:"flex", justifyContent:"space-between", borderLeft:`3px solid ${C.gold}` }}>
+                    <span>{p.name}</span><span style={{ color:"#444", fontSize:11 }}>{p.archivedAt}</span>
                   </div>
                 ))}
               </div>
             )}
             <div style={{ display:"flex", gap:10 }}>
-              <button className="btn" onClick={() => setPeriodModal(false)} style={{ flex:1, background:"#1f2937", color:"#9ca3af", padding:12 }}>Cancelar</button>
-              <button className="btn" onClick={handleArchivePeriod} disabled={!periodName.trim()} style={{ flex:2, background:"linear-gradient(135deg,#f59e0b,#d97706)", color:"#fff", padding:12, fontSize:15, opacity:periodName.trim()?1:0.5 }}>Archivar y Reiniciar</button>
+              <button className="btn" onClick={() => setPeriodModal(false)} style={{ flex:1, background:"#1e1e1e", border:"1px solid #444", color:"#888", padding:12 }}>Cancelar</button>
+              <button className="btn" onClick={handleArchivePeriod} disabled={!periodName.trim()}
+                style={{ flex:2, background:periodName.trim()?`linear-gradient(135deg,${C.gold},${C.goldDark})`:"#333", color:periodName.trim()?C.black:"#666", padding:12, fontSize:14 }}>
+                🔒 Archivar y Reiniciar
+              </button>
             </div>
           </div>
         </div>
       )}
 
+      {/* Modal alerta de deméritos 5/10/15 */}
       {demeritAlert && (
         <div className="overlay" onClick={() => setDemeritAlert(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ textAlign:"center" }}>
-            <div style={{ fontSize:64, marginBottom:8 }}>{demeritAlert.milestone === 15 ? "🚨" : demeritAlert.milestone === 10 ? "⚠️" : "🔔"}</div>
-            <h2 style={{ fontFamily:"'Syne',sans-serif", fontWeight:800, fontSize:22, marginBottom:8, color: demeritAlert.milestone === 15 ? "#ef4444" : demeritAlert.milestone === 10 ? "#f97316" : "#f59e0b" }}>
-              {demeritAlert.milestone === 15 ? "¡Límite alcanzado!" : `¡Alerta: ${demeritAlert.milestone} deméritos!`}
-            </h2>
-            <p style={{ fontSize:16, fontWeight:600, marginBottom:6 }}>{demeritAlert.student.name}</p>
-            <p style={{ color:"#9ca3af", fontSize:14, marginBottom:20 }}>
-              {demeritAlert.milestone === 15
-                ? `Ha alcanzado el límite máximo de 15 deméritos. Se recomienda acción disciplinaria inmediata y notificación a los padres.`
-                : demeritAlert.milestone === 10
-                ? `Ha llegado a 10 deméritos. Se recomienda notificar a los padres y citar una reunión.`
-                : `Ha llegado a 5 deméritos. Se recomienda una advertencia formal.`}
-            </p>
-            <div style={{ background: demeritAlert.milestone === 15 ? "rgba(239,68,68,0.1)" : demeritAlert.milestone === 10 ? "rgba(249,115,22,0.1)" : "rgba(245,158,11,0.1)", border:`1px solid ${demeritAlert.milestone === 15 ? "#ef4444" : demeritAlert.milestone === 10 ? "#f97316" : "#f59e0b"}`, borderRadius:10, padding:"10px 16px", marginBottom:20, fontSize:13, color: demeritAlert.milestone === 15 ? "#ef4444" : demeritAlert.milestone === 10 ? "#f97316" : "#f59e0b" }}>
-              Total actual: <strong>{demeritAlert.student.demerits} deméritos</strong>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ textAlign:"center" }}>
+            <div style={{ fontSize:56, marginBottom:8 }}>
+              {demeritAlert.milestone === 15 ? "🚨" : demeritAlert.milestone === 10 ? "⛔" : demeritAlert.milestone === 6 ? "⚠️" : "🔔"}
             </div>
-            <button className="btn" onClick={() => setDemeritAlert(null)} style={{ width:"100%", background:"linear-gradient(135deg,#6366f1,#8b5cf6)", color:"#fff", padding:12, fontSize:15 }}>Entendido</button>
+            <h2 style={{ fontFamily:"'Playfair Display',serif", fontWeight:700, fontSize:20, marginBottom:6,
+              color: demeritAlert.milestone === 15 ? C.red : demeritAlert.milestone === 10 ? "#ef4444" : demeritAlert.milestone === 6 ? "#f97316" : C.gold }}>
+              {demeritAlert.milestone === 15 ? "Reprobación del Grado"
+                : demeritAlert.milestone === 10 ? "Reunión con Dirección y Familia"
+                : demeritAlert.milestone === 6 ? "Comunicación a la Familia"
+                : "Advertencia Verbal y Reflexión Escrita"}
+            </h2>
+            <p style={{ fontSize:15, fontWeight:600, color:C.white, marginBottom:6 }}>{demeritAlert.student.name}</p>
+            <p style={{ color:"#888", fontSize:13, marginBottom:20 }}>
+              {demeritAlert.milestone === 15
+                ? "El alumno ha alcanzado 15 deméritos. Según el reglamento institucional, esto conlleva la reprobación del grado escolar."
+                : demeritAlert.milestone === 10
+                ? "El alumno ha alcanzado 10 deméritos. Se requiere reunión inmediata con Dirección y familia. Constituye la última advertencia antes de la reprobación."
+                : demeritAlert.milestone === 6
+                ? "El alumno ha acumulado 6 deméritos. Se debe notificar formalmente a la familia y asignar tareas correctivas."
+                : "El alumno ha acumulado 3 deméritos. Se debe aplicar advertencia verbal y solicitar reflexión escrita."}
+            </p>
+            <div style={{
+              background: demeritAlert.milestone===15?"rgba(204,0,0,0.12)":demeritAlert.milestone===10?"rgba(239,68,68,0.1)":demeritAlert.milestone===6?"rgba(249,115,22,0.1)":"rgba(255,204,0,0.1)",
+              border:`1px solid ${demeritAlert.milestone===15?C.red:demeritAlert.milestone===10?"#ef4444":demeritAlert.milestone===6?"#f97316":C.gold}`,
+              borderRadius:3, padding:"10px 16px", marginBottom:20, fontSize:13,
+              color:demeritAlert.milestone===15?C.red:demeritAlert.milestone===10?"#ef4444":demeritAlert.milestone===6?"#f97316":C.gold }}>
+              Total acumulado: <strong>{demeritAlert.student.demerits} / 15 deméritos</strong>
+            </div>
+            <button className="btn" onClick={() => setDemeritAlert(null)}
+              style={{ width:"100%", background:C.red, color:"#fff", padding:12, fontSize:14 }}>
+              Entendido
+            </button>
           </div>
         </div>
       )}
