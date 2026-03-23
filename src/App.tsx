@@ -47,6 +47,7 @@ interface HistoryEntry {
   reason: string;
   points: number;
   type: "add" | "remove";
+  teacher?: string;
 }
 interface ArchivedPeriod {
   id: string;
@@ -268,7 +269,7 @@ export default function DemeritosApp() {
       ? Math.min(15, selectedStudent.demerits + pts)
       : Math.max(0, selectedStudent.demerits - pts);
     await updateDoc(doc(db, "students", selectedStudent.id), {
-      demerits: newDem, history: arrayUnion({ date: today, reason, points: pts, type: modalType }),
+      demerits: newDem, history: arrayUnion({ date: today, reason, points: pts, type: modalType, teacher: user?.email ?? "Desconocido" }),
     });
     setShowModal(false);
     if (modalType === "add") {
@@ -483,6 +484,7 @@ export default function DemeritosApp() {
                       <div style={{ flex:1 }}>
                         <div style={{ fontSize:13, fontWeight:600 }}>{h.studentName}</div>
                         <div style={{ fontSize:11, color:"#666" }}>{h.reason} · {h.date}</div>
+                        {h.teacher && <div style={{ fontSize:10, color:"#444", marginTop:2 }}>👤 {h.teacher}</div>}
                       </div>
                       <span style={{ fontWeight:700, color:h.type==="add"?C.red:"#22c55e", fontSize:14 }}>{h.type==="add"?"+":"-"}{h.points}</span>
                     </div>
@@ -598,8 +600,11 @@ export default function DemeritosApp() {
               {students.flatMap(s => (s.history||[]).map(h => ({ ...h, studentName:s.name, grade:s.grade }))).sort((a,b) => b.date.localeCompare(a.date)).map((h, i) => (
                 <div key={i} className="card" style={{ padding:"10px 16px", marginBottom:6, display:"flex", alignItems:"center", gap:12, borderLeft:`3px solid ${h.type==="add"?C.red:"#22c55e"}` }}>
                   <div style={{ flex:1 }}>
-                    <span style={{ fontWeight:600, fontSize:13 }}>{h.studentName}</span>
-                    <span style={{ color:"#555", fontSize:12 }}> · {h.grade} · {h.reason}</span>
+                    <div>
+                      <span style={{ fontWeight:600, fontSize:13 }}>{h.studentName}</span>
+                      <span style={{ color:"#555", fontSize:12 }}> · {h.grade} · {h.reason}</span>
+                    </div>
+                    {h.teacher && <div style={{ fontSize:11, color:"#444", marginTop:2 }}>👤 {h.teacher}</div>}
                   </div>
                   <span style={{ color:"#555", fontSize:11 }}>{h.date}</span>
                   <span style={{ fontWeight:700, color:h.type==="add"?C.red:"#22c55e", fontSize:14, minWidth:36, textAlign:"right" }}>{h.type==="add"?"+":"-"}{h.points}</span>
